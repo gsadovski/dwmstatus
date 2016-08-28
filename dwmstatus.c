@@ -1,3 +1,20 @@
+/* My dwmstatus bar
+
+  Song played in Artist - Name format
+  Volume
+  Disk usage - home and root
+  Network monitoring - should display SSID in green when connected or
+                       'down' in red when not connected. Preferably would
+		       also display signal strength with color dependant on
+		       the value. Finally it should also display download and
+		       upload speeds.
+  Memory usage - should not include cache. Should be for both swap and main.
+  CPU usage - Load average followed by average CPU load
+  CPU temperatures - Coloured red above a threshold
+  Battery indicator - color dependadnt with icon depending on state.
+  Date and time
+*/
+
 #define _BSD_SOURCE
 #include <unistd.h>
 #include <stdio.h>
@@ -11,10 +28,6 @@
 #include <sys/wait.h>
 
 #include <X11/Xlib.h>
-
-char *tzargentina = "America/Buenos_Aires";
-char *tzutc = "UTC";
-char *tzberlin = "Europe/Berlin";
 
 static Display *dpy;
 
@@ -42,21 +55,14 @@ smprintf(char *fmt, ...)
 	return ret;
 }
 
-void
-settz(char *tzname)
-{
-	setenv("TZ", tzname, 1);
-}
-
 char *
-mktimes(char *fmt, char *tzname)
+mktimes(char *fmt)
 {
 	char buf[129];
 	time_t tim;
 	struct tm *timtm;
 
 	memset(buf, 0, sizeof(buf));
-	settz(tzname);
 	tim = time(NULL);
 	timtm = localtime(&tim);
 	if (timtm == NULL) {
@@ -70,6 +76,16 @@ mktimes(char *fmt, char *tzname)
 	}
 
 	return smprintf("%s", buf);
+}
+
+char *
+mktimestz(char *fmt, char *tzname)
+{
+  	setenv("TZ", tzname, 1);
+	char *buf = mktimes(fmt);
+	unsetenv("TZ");
+
+	return buf;
 }
 
 void
@@ -97,28 +113,23 @@ main(void)
 {
 	char *status;
 	char *avgs;
-	char *tmar;
-	char *tmutc;
-	char *tmbln;
+	char *tmloc;
 
 	if (!(dpy = XOpenDisplay(NULL))) {
 		fprintf(stderr, "dwmstatus: cannot open display.\n");
 		return 1;
 	}
 
-	for (;;sleep(90)) {
+	for (;;sleep(1)) {
 		avgs = loadavg();
-		tmar = mktimes("%H:%M", tzargentina);
-		tmutc = mktimes("%H:%M", tzutc);
-		tmbln = mktimes("KW %W %a %d %b %H:%M %Z %Y", tzberlin);
+		
+		tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-		status = smprintf("L:%s A:%s U:%s %s",
-				avgs, tmar, tmutc, tmbln);
+		status = smprintf("L:%s | %s",
+				  avgs, tmloc);
 		setstatus(status);
 		free(avgs);
-		free(tmar);
-		free(tmutc);
-		free(tmbln);
+		free(tmloc);
 		free(status);
 	}
 
