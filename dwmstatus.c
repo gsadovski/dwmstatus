@@ -1,7 +1,7 @@
 /* My dwmstatus bar
 
   Song played in Artist - Name format
-  Volume
+  - Volume
   Disk usage - home and root
   Network monitoring - should display SSID in green when connected or
                        'down' in red when not connected. Preferably would
