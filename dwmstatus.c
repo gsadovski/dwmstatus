@@ -104,19 +104,6 @@ getnumcpus(void)
     num_cpus=1;
 }
 
-char *
-loadavg(void)
-{
-	double avgs[3];
-
-	if (getloadavg(avgs, 3) < 0) {
-		perror("getloadavg");
-		exit(1);
-	}
-
-	return smprintf("%.2f %.2f %.2f", avgs[0], avgs[1], avgs[2]);
-}
-
 typedef struct CT_t
 {
   unsigned long long u, n, s, i, w, x, y, z;
@@ -135,8 +122,15 @@ cpuload(void)
   static int siz = -1;
   int tot_read, num;
   float scale;
+  double avgs[3];
   float pct_tot;
   
+  if (getloadavg(avgs, 3) < 0)
+    {
+      perror("cpuload failed to get load averages");
+      exit(1);
+    }
+
   if (!stat_file)
     {
       if (!(stat_file = fopen("/proc/stat", "r")))
@@ -212,7 +206,78 @@ cpuload(void)
 
   pct_tot = (float)(tics_frme.u + tics_frme.n + tics_frme.s) * scale;
 
-  return smprintf("%6.2f", pct_tot);
+  return smprintf(" %.2f %.2f %.2f %6.2f%%", avgs[0], avgs[1], avgs[2] , pct_tot);
+}
+
+/* Battery info */
+
+#define BATT_NOW        "/sys/class/power_supply/BAT0/energy_now"
+#define BATT_FULL       "/sys/class/power_supply/BAT0/energy_full"
+#define BATT_STATUS     "/sys/class/power_supply/BAT0/status"
+#define POW_NOW         "/sys/class/power_supply/BAT0/power_now"
+
+#define GLYPH_UNKWN   "? "
+#define GLYPH_FULL    " "
+#define GLYPH_CHRG    " "
+#define GLYPH_DCHRG_0 " "
+#define GLYPH_DCHRG_1 " "
+#define GLYPH_DCHRG_2 " "
+#define GLYPH_DCHRG_3 " "
+#define GLYPH_DCHRG_4 " "
+
+char *
+getbattery()
+{
+  long lnum1, lnum2 = 0;
+  long pow, pct;
+  long mm, hh = -1;
+  char *status = malloc(sizeof(char)*12);
+  char *s = GLYPH_UNKWN;
+  FILE *fp = NULL;
+  if ((fp = fopen(BATT_NOW, "r"))) {
+    fscanf(fp, "%ld\n", &lnum1);
+    fclose(fp);
+    fp = fopen(BATT_FULL, "r");
+    fscanf(fp, "%ld\n", &lnum2);
+    fclose(fp);
+    fp = fopen(BATT_STATUS, "r");
+    fscanf(fp, "%s\n", status);
+    fclose(fp);
+    fp = fopen(POW_NOW, "r");
+    fscanf(fp, "%ld\n", &pow);
+    fclose(fp);
+    pct = (lnum1/(lnum2/100));
+    if (strcmp(status,"Charging") == 0)
+      {
+	s = GLYPH_CHRG;
+
+	hh = (lnum2 - lnum1) / pow;
+	mm = ((lnum2 - lnum1) % pow) * 60 / pow;
+      }
+    if (strcmp(status,"Discharging") == 0)
+      {
+	if (pct < 20)
+	  s = GLYPH_DCHRG_0;
+	else if (pct < 40)
+	  s = GLYPH_DCHRG_1;
+	else if (pct < 60)
+	  s = GLYPH_DCHRG_2;
+	else if (pct < 85)
+	  s = GLYPH_DCHRG_3;
+	else
+	  s = GLYPH_DCHRG_4;
+
+	hh = lnum1 / pow;
+	mm = (lnum1 % pow) * 60 / pow;
+      }
+    if (strcmp(status,"Full") == 0)
+      s = GLYPH_FULL;
+    if ( hh < 0 )
+      return smprintf("%s%3ld%%", s,pct);
+    else
+      return smprintf("%s%3ld%% %2ld:%02ld", s,pct,hh,mm);
+  }
+  else return smprintf("");
 }
 
 /* Main function */
@@ -228,15 +293,15 @@ int
 main(void)
 {
 	char *status;
-	char *avgs;
 	char *cpu;
+	char *batt;
 	char *tmloc;
 
 	int counter = 0;
-	int avgs_interval  = 2;
 	int cpu_interval   = 2;
+	int batt_interval  = 1;
 	int tmloc_interval = 1;
-	int max_interval   = 2;
+	int max_interval   = 30;
 
 	/* Run functions that have to be run only once */
 	getnumcpus();
@@ -248,17 +313,17 @@ main(void)
 
 	/* Regular updates */
 	for (;;sleep(1)) {
-	        if (counter % avgs_interval == 0) avgs = loadavg();
 	        if (counter % cpu_interval == 0) cpu = cpuload();
+	        if (counter % batt_interval == 0) batt = getbattery();
 		if (counter % tmloc_interval == 0)
 		  tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-		status = smprintf(":%s %s% | %s",
-				  avgs, cpu, tmloc);
+		status = smprintf("%s | %s | %s",
+				  cpu, batt, tmloc);
 		setstatus(status);
 
-		if (!avgs)  free(avgs);
 		if (!cpu)   free(cpu);
+		if (!batt)  free(batt);
 		if (!tmloc) free(tmloc);
 		free(status);
 
