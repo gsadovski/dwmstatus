@@ -60,6 +60,7 @@ smprintf(char *fmt, ...)
 }
 
 /* Volume info */
+/* Inexplicably much heavier on resources than the other functions */
 
 #define GLYPH_VOL_MUTE ""
 #define GLYPH_VOL_LOW  ""
@@ -151,6 +152,7 @@ mktimestz(char *fmt, char *tzname)
 /* CPU info */
 
 #define STAT_FILE "/proc/stat"
+#define TICS_EDGE  20
 
 int num_cpus;
 
@@ -172,73 +174,41 @@ getnumcpus(void)
 char *
 getcpuload(void)
 {
-  static FILE *stat_file = NULL;
-  static char *buf;
+  static FILE *fp = NULL;
   static CT_t tics_prv;
   static CT_t tics_cur;
   static CT_t tics_frme;
-  static int siz = -1;
-  int tot_read, num;
   float scale;
   double avgs[3];
   float pct_tot;
-  
+
   if (getloadavg(avgs, 3) < 0)
     {
       perror("cpuload call to getloadavg failed");
-      exit(1);
+      return smprintf("");
     }
 
-  if (!stat_file)
+  if ((fp = fopen(STAT_FILE, "r")))
     {
-      if (!(stat_file = fopen(STAT_FILE, "r")))
-	perror("cpuload failed to open STAT_FILE");
-    }
-  rewind(stat_file);
-  fflush(stat_file);
-  
-#define buffGRW 1024
-  
-  if (buf)
-    {
-      buf[0] = '\0';
+      memcpy(&tics_prv, &tics_cur, sizeof(CT_t));
+      fscanf(fp, "cpu %llu %llu %llu %llu %llu %llu %llu %llu"
+	     , &tics_cur.u, &tics_cur.n, &tics_cur.s
+	     , &tics_cur.i, &tics_cur.w, &tics_cur.x
+	     , &tics_cur.y, &tics_cur.z);
+      fclose(fp);
     }
   else
     {
-      buf = calloc(1, (siz = buffGRW));
+      perror("cpuload failed to read CPU tic values");
+      return smprintf("");
     }
-  while (0 < (num = fread(buf + tot_read, 1, (siz - tot_read), stat_file)))
-    {
-      tot_read += num;
-      if (tot_read < siz)
-	break;
-      buf = realloc(buf, (siz += buffGRW));
-    };
-  
-  buf[tot_read] = '\0';
-  
-#undef buffGRW
-
-  /* Read in the values */
-  memcpy(&tics_prv, &tics_cur, sizeof(CT_t));
-  // then value the last slot with the cpu summary line
-  if (4 > sscanf(buf, "cpu %llu %llu %llu %llu %llu %llu %llu %llu"
-		 , &tics_cur.u, &tics_cur.n, &tics_cur.s
-		 , &tics_cur.i, &tics_cur.w, &tics_cur.x
-		 , &tics_cur.y, &tics_cur.z))
-    perror("cpuload failed to read CPU tic values");
 
   tics_cur.tot = tics_cur.u + tics_cur.s
     + tics_cur.n + tics_cur.i + tics_cur.w
     + tics_cur.x + tics_cur.y + tics_cur.z;
-  /* if a cpu has registered substantially fewer tics than those expected,
-     we'll force it to be treated as 'idle' so as not to present misleading
-     percentages. */
-#define TICS_EDGE  20
   tics_cur.edge =
     ((tics_cur.tot - tics_prv.tot) / num_cpus) / (100 / TICS_EDGE);
 
-  /* Calculate percentages */
   tics_frme.u = tics_cur.u - tics_prv.u;
   tics_frme.s = tics_cur.s - tics_prv.s;
   tics_frme.n = tics_cur.n - tics_prv.n;
@@ -387,14 +357,12 @@ int
 main(void)
 {
 	char *status;
-	char *vol;
 	char *cpu;
 	char *temp;
 	char *batt;
 	char *tmloc;
 
 	int counter = 0;
-	int vol_interval   = 1;
 	int cpu_interval   = 2;
 	int temp_interval  = 30;
 	int batt_interval  = 30;
@@ -411,18 +379,16 @@ main(void)
 
 	/* Regular updates */
 	for (;;sleep(1)) {
-	        if (counter % vol_interval == 0)   vol  = getvol();
 	        if (counter % cpu_interval == 0)   cpu  = getcpuload();
 		if (counter % temp_interval == 0)  temp = gettemperature();
 	        if (counter % batt_interval == 0)  batt = getbattery();
 		if (counter % tmloc_interval == 0)
 		  tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-		status = smprintf("%s | %s | %s | %s | %s",
-				  vol, cpu, temp, batt, tmloc);
+		status = smprintf("%s | %s | %s | %s",
+				  cpu, temp, batt, tmloc);
 		setstatus(status);
 
-		if (!vol)   free(vol);
 		if (!cpu)   free(cpu);
 		if (!temp)  free(temp);
 		if (!batt)  free(batt);
