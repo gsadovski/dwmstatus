@@ -9,10 +9,10 @@
 		       the value. Finally it should also display download and
 		       upload speeds.
   Memory usage - should not include cache. Should be for both swap and main.
-  CPU usage - Load average followed by average CPU load
+  - CPU usage - Load average followed by average CPU load
   CPU temperatures - Coloured red above a threshold
-  Battery indicator - color dependadnt with icon depending on state.
-  Date and time
+  - Battery indicator - color dependadnt with icon depending on state.
+  - Date and time
 */
 
 #define _BSD_SOURCE
@@ -229,8 +229,8 @@ char *
 getbattery()
 {
   long lnum1, lnum2 = 0;
-  long pow, pct;
-  long mm, hh = -1;
+  long pow, pct, energy = -1;
+  long mm, hh;
   char *status = malloc(sizeof(char)*12);
   char *s = GLYPH_UNKWN;
   FILE *fp = NULL;
@@ -251,10 +251,9 @@ getbattery()
       {
 	s = GLYPH_CHRG;
 
-	hh = (lnum2 - lnum1) / pow;
-	mm = ((lnum2 - lnum1) % pow) * 60 / pow;
+	energy = lnum2 - lnum1;
       }
-    if (strcmp(status,"Discharging") == 0)
+    else if (strcmp(status,"Discharging") == 0)
       {
 	if (pct < 20)
 	  s = GLYPH_DCHRG_0;
@@ -267,15 +266,22 @@ getbattery()
 	else
 	  s = GLYPH_DCHRG_4;
 
-	hh = lnum1 / pow;
-	mm = (lnum1 % pow) * 60 / pow;
+	energy = lnum1;
       }
-    if (strcmp(status,"Full") == 0)
+    else if (strcmp(status,"Full") == 0)
       s = GLYPH_FULL;
-    if ( hh < 0 )
+
+    hh = energy / pow;
+    mm = (lnum1 % pow) * 60 / pow;
+    
+    if ( energy < 0 )
       return smprintf("%s%3ld%%", s,pct);
     else
-      return smprintf("%s%3ld%% %2ld:%02ld", s,pct,hh,mm);
+      {
+	hh = energy / pow;
+	mm = (energy % pow) * 60 / pow;
+	return smprintf("%s%3ld%% %2ld:%02ld", s,pct,hh,mm);
+      }
   }
   else return smprintf("");
 }
@@ -299,7 +305,7 @@ main(void)
 
 	int counter = 0;
 	int cpu_interval   = 2;
-	int batt_interval  = 1;
+	int batt_interval  = 30;
 	int tmloc_interval = 1;
 	int max_interval   = 30;
 
