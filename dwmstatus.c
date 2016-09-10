@@ -26,20 +26,12 @@
 #include <time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <alsa/asoundlib.h>
+#include <alsa/control.h>
 
 #include <X11/Xlib.h>
 
 static Display *dpy;
-
-/* Percent bar */
-
-static const char *
-pctbar(long p)
-{
-    const char *s[] = { "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "█" };
-
-    return s[((8 * p) / 100)];
-}
 
 /* C string utility */
 
@@ -63,8 +55,62 @@ smprintf(char *fmt, ...)
 	va_start(fmtargs, fmt);
 	vsnprintf(ret, len, fmt, fmtargs);
 	va_end(fmtargs);
-
+	
 	return ret;
+}
+
+/* Volume info */
+
+#define GLYPH_VOL_MUTE ""
+#define GLYPH_VOL_LOW  ""
+#define GLYPH_VOL_HIGH ""
+
+char * 
+getvol(void)
+{ 
+  long int vol, max, min;
+  int mute_state;
+  int pct_vol;
+  snd_mixer_t *handle;
+  snd_mixer_elem_t *elem;
+  snd_mixer_selem_id_t *s_elem;
+  char *s;
+    
+  snd_mixer_open(&handle, 0);
+  snd_mixer_attach(handle, "default");
+  snd_mixer_selem_register(handle, NULL, NULL);
+  snd_mixer_load(handle);
+  snd_mixer_selem_id_malloc(&s_elem);
+  snd_mixer_selem_id_set_name(s_elem, "Master");
+  elem = snd_mixer_find_selem(handle, s_elem);
+  
+  if (elem == NULL)
+    {
+      snd_mixer_selem_id_free(s_elem);
+      snd_mixer_close(handle);
+      perror("alsa error");
+      return smprintf("");
+    }
+  
+  snd_mixer_handle_events(handle);
+  snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+  snd_mixer_selem_get_playback_volume(elem, 0, &vol);
+  snd_mixer_selem_get_playback_switch(elem, 0, &mute_state);
+  
+  if(!mute_state)
+    return smprintf("%s MUTE", GLYPH_VOL_MUTE);
+
+  pct_vol = (int)((float)(vol * 100) / max + 0.5);
+
+  if (pct_vol < 50)
+    s = GLYPH_VOL_LOW;
+  else
+    s = GLYPH_VOL_HIGH;
+  
+  snd_mixer_selem_id_free(s_elem);
+  snd_mixer_close(handle);
+  
+  return smprintf("%s%3d%%", s, pct_vol);
 }
 
 /* Time info */
@@ -218,9 +264,8 @@ getcpuload(void)
 
   pct_tot = (float)(tics_frme.u + tics_frme.n + tics_frme.s) * scale;
 
-  return smprintf(" %.2f %.2f %.2f %s%6.2f%%",
-		  avgs[0], avgs[1], avgs[2],
-		  pctbar(pct_tot), pct_tot);
+  return smprintf(" %.2f %.2f %.2f %6.2f%%",
+		  avgs[0], avgs[1], avgs[2], pct_tot);
 }
 
 /*  Temperature info*/
@@ -248,7 +293,7 @@ gettemperature(void)
       return smprintf("");
     }
 
-  return smprintf(" %s %3ld°C", pctbar((float)temp / tempc * 100), temp / 1000);
+  return smprintf(" %3ld°C", temp / 1000);
 }
 
 /* Battery info */
@@ -342,12 +387,14 @@ int
 main(void)
 {
 	char *status;
+	char *vol;
 	char *cpu;
 	char *temp;
 	char *batt;
 	char *tmloc;
 
 	int counter = 0;
+	int vol_interval   = 1;
 	int cpu_interval   = 2;
 	int temp_interval  = 30;
 	int batt_interval  = 30;
@@ -364,16 +411,18 @@ main(void)
 
 	/* Regular updates */
 	for (;;sleep(1)) {
-	        if (counter % cpu_interval == 0) cpu = getcpuload();
-		if (counter % temp_interval == 0) temp = gettemperature();
-	        if (counter % batt_interval == 0) batt = getbattery();
+	        if (counter % vol_interval == 0)   vol  = getvol();
+	        if (counter % cpu_interval == 0)   cpu  = getcpuload();
+		if (counter % temp_interval == 0)  temp = gettemperature();
+	        if (counter % batt_interval == 0)  batt = getbattery();
 		if (counter % tmloc_interval == 0)
 		  tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-		status = smprintf("%s | %s | %s | %s",
-				  cpu, temp, batt, tmloc);
+		status = smprintf("%s | %s | %s | %s | %s",
+				  vol, cpu, temp, batt, tmloc);
 		setstatus(status);
 
+		if (!vol)   free(vol);
 		if (!cpu)   free(cpu);
 		if (!temp)  free(temp);
 		if (!batt)  free(batt);
