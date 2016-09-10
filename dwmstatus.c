@@ -10,7 +10,7 @@
 		       upload speeds.
   Memory usage - should not include cache. Should be for both swap and main.
   - CPU usage - Load average followed by average CPU load
-  CPU temperatures - Coloured red above a threshold
+  - CPU temperatures - Coloured red above a threshold
   - Battery indicator - color dependadnt with icon depending on state.
   - Date and time
 */
@@ -30,6 +30,16 @@
 #include <X11/Xlib.h>
 
 static Display *dpy;
+
+/* Percent bar */
+
+static const char *
+pctbar(long p)
+{
+    const char *s[] = { "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "█" };
+
+    return s[((8 * p) / 100)];
+}
 
 /* C string utility */
 
@@ -114,7 +124,7 @@ getnumcpus(void)
 }
 
 char *
-cpuload(void)
+getcpuload(void)
 {
   static FILE *stat_file = NULL;
   static char *buf;
@@ -129,14 +139,14 @@ cpuload(void)
   
   if (getloadavg(avgs, 3) < 0)
     {
-      perror("cpuload failed to get load averages");
+      perror("cpuload call to getloadavg failed");
       exit(1);
     }
 
   if (!stat_file)
     {
       if (!(stat_file = fopen(STAT_FILE, "r")))
-	perror("cpuload failed to open /proc/stat");
+	perror("cpuload failed to open STAT_FILE");
     }
   rewind(stat_file);
   fflush(stat_file);
@@ -208,14 +218,12 @@ cpuload(void)
 
   pct_tot = (float)(tics_frme.u + tics_frme.n + tics_frme.s) * scale;
 
-  return smprintf(" %.2f %.2f %.2f %6.2f%%", avgs[0], avgs[1], avgs[2] , pct_tot);
+  return smprintf(" %.2f %.2f %.2f %s%6.2f%%",
+		  avgs[0], avgs[1], avgs[2],
+		  pctbar(pct_tot), pct_tot);
 }
 
 /*  Temperature info*/
-
-/*
- * gettemperature("/sys/class/hwmon/hwmon0/device", "temp1_input");
- */
 
 #define TEMP_INPUT "/sys/class/hwmon/hwmon0/temp1_input"
 #define TEMP_CRIT  "/sys/class/hwmon/hwmon0/temp1_crit"
@@ -223,12 +231,15 @@ cpuload(void)
 char *
 gettemperature(void)
 {
-  long temp;
+  long temp, tempc;
   FILE *fp = NULL;
   
   if ((fp = fopen(TEMP_INPUT, "r")))
     {
       fscanf(fp, "%ld\n", &temp);
+      fclose(fp);
+      fp = fopen(TEMP_CRIT, "r");
+      fscanf(fp, "%ld\n", &tempc);
       fclose(fp);
     }
   else
@@ -237,7 +248,7 @@ gettemperature(void)
       return smprintf("");
     }
 
-  return smprintf(" %3ld°C", temp / 1000);
+  return smprintf(" %s %3ld°C", pctbar((float)temp / tempc * 100), temp / 1000);
 }
 
 /* Battery info */
@@ -338,7 +349,7 @@ main(void)
 
 	int counter = 0;
 	int cpu_interval   = 2;
-	int temp_interval  = 2;
+	int temp_interval  = 30;
 	int batt_interval  = 30;
 	int tmloc_interval = 1;
 	int max_interval   = 30;
@@ -353,7 +364,7 @@ main(void)
 
 	/* Regular updates */
 	for (;;sleep(1)) {
-	        if (counter % cpu_interval == 0) cpu = cpuload();
+	        if (counter % cpu_interval == 0) cpu = getcpuload();
 		if (counter % temp_interval == 0) temp = gettemperature();
 	        if (counter % batt_interval == 0) batt = getbattery();
 		if (counter % tmloc_interval == 0)
