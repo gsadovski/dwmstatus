@@ -94,7 +94,16 @@ mktimestz(char *fmt, char *tzname)
 
 /* CPU info */
 
+#define STAT_FILE "/proc/stat"
+
 int num_cpus;
+
+typedef struct CT_t
+{
+  unsigned long long u, n, s, i, w, x, y, z;
+  unsigned long long tot;
+  unsigned long long edge;
+} CT_t;
 
 void
 getnumcpus(void)
@@ -103,13 +112,6 @@ getnumcpus(void)
   if (num_cpus<1)        /* SPARC glibc is buggy */
     num_cpus=1;
 }
-
-typedef struct CT_t
-{
-  unsigned long long u, n, s, i, w, x, y, z;
-  unsigned long long tot;
-  unsigned long long edge;
-} CT_t;
 
 char *
 cpuload(void)
@@ -133,7 +135,7 @@ cpuload(void)
 
   if (!stat_file)
     {
-      if (!(stat_file = fopen("/proc/stat", "r")))
+      if (!(stat_file = fopen(STAT_FILE, "r")))
 	perror("cpuload failed to open /proc/stat");
     }
   rewind(stat_file);
@@ -209,6 +211,35 @@ cpuload(void)
   return smprintf(" %.2f %.2f %.2f %6.2f%%", avgs[0], avgs[1], avgs[2] , pct_tot);
 }
 
+/*  Temperature info*/
+
+/*
+ * gettemperature("/sys/class/hwmon/hwmon0/device", "temp1_input");
+ */
+
+#define TEMP_INPUT "/sys/class/hwmon/hwmon0/temp1_input"
+#define TEMP_CRIT  "/sys/class/hwmon/hwmon0/temp1_crit"
+
+char *
+gettemperature(void)
+{
+  long temp;
+  FILE *fp = NULL;
+  
+  if ((fp = fopen(TEMP_INPUT, "r")))
+    {
+      fscanf(fp, "%ld\n", &temp);
+      fclose(fp);
+    }
+  else
+    {
+      perror("failed to open temperature file");
+      return smprintf("");
+    }
+
+  return smprintf(" %3ld°C", temp / 1000);
+}
+
 /* Battery info */
 
 #define BATT_NOW        "/sys/class/power_supply/BAT0/energy_now"
@@ -271,10 +302,7 @@ getbattery()
     else if (strcmp(status,"Full") == 0)
       s = GLYPH_FULL;
 
-    hh = energy / pow;
-    mm = (lnum1 % pow) * 60 / pow;
-    
-    if ( energy < 0 )
+    if ( energy < 0 || pow <= 0)
       return smprintf("%s%3ld%%", s,pct);
     else
       {
@@ -283,7 +311,11 @@ getbattery()
 	return smprintf("%s%3ld%% %2ld:%02ld", s,pct,hh,mm);
       }
   }
-  else return smprintf("");
+  else
+    {
+      perror("getbattery");
+      return smprintf("");
+    }
 }
 
 /* Main function */
@@ -300,11 +332,13 @@ main(void)
 {
 	char *status;
 	char *cpu;
+	char *temp;
 	char *batt;
 	char *tmloc;
 
 	int counter = 0;
 	int cpu_interval   = 2;
+	int temp_interval  = 2;
 	int batt_interval  = 30;
 	int tmloc_interval = 1;
 	int max_interval   = 30;
@@ -320,15 +354,17 @@ main(void)
 	/* Regular updates */
 	for (;;sleep(1)) {
 	        if (counter % cpu_interval == 0) cpu = cpuload();
+		if (counter % temp_interval == 0) temp = gettemperature();
 	        if (counter % batt_interval == 0) batt = getbattery();
 		if (counter % tmloc_interval == 0)
 		  tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-		status = smprintf("%s | %s | %s",
-				  cpu, batt, tmloc);
+		status = smprintf("%s | %s | %s | %s",
+				  cpu, temp, batt, tmloc);
 		setstatus(status);
 
 		if (!cpu)   free(cpu);
+		if (!temp)  free(temp);
 		if (!batt)  free(batt);
 		if (!tmloc) free(tmloc);
 		free(status);
