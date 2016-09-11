@@ -149,6 +149,85 @@ mktimestz(char *fmt, char *tzname)
 	return buf;
 }
 
+/* Network info */
+
+#define NETDEV_FILE "/proc/net/dev"
+
+int
+parsenetdev(unsigned long long int *receivedabs, unsigned long long int *sentabs)
+{
+  char buf[255];
+  char *datastart;
+  static int bufsize;
+  int rval;
+  FILE *fp;
+  unsigned long long int receivedacc, sentacc;
+
+  bufsize = 255;
+  fp = fopen(NETDEV_FILE, "r");
+  rval = 1;
+
+  // Ignore the first two lines of the file
+  fgets(buf, bufsize, fp);
+  fgets(buf, bufsize, fp);
+
+  while (fgets(buf, bufsize, fp))
+    {
+      if ((datastart = strstr(buf, "lo:")) == NULL)
+	{
+	  datastart = strstr(buf, ":");
+	  
+	  // With thanks to the conky project at http://conky.sourceforge.net/
+	  sscanf(datastart + 1, "%llu  %*d     %*d  %*d  %*d  %*d   %*d        %*d       %llu",	\
+		 &receivedacc, &sentacc);
+	  *receivedabs += receivedacc;
+	  *sentabs += sentacc;
+	  rval = 0;
+	}
+    }
+  
+  fclose(fp);
+  return rval;
+}
+
+void
+calculatespeed(char *speedstr, unsigned long long int newval, unsigned long long int oldval)
+{
+  double speed;
+  speed = (newval - oldval) / 1024.0;
+  if (speed > 1024.0)
+    {
+      speed /= 1024.0;
+      sprintf(speedstr, "%4.1f MB/s", speed);
+    }
+  else
+    {
+      sprintf(speedstr, "%4.0f KB/s", speed);
+    }
+}
+
+char *
+getnetusage(void)
+{
+  static unsigned long long int rec, sent;
+  unsigned long long int newrec, newsent;
+  newrec = newsent = 0;
+  char downstr[15], upstr[15];
+  
+  if (parsenetdev(&newrec, &newsent))
+    {
+      perror("Error when parsing /proc/net/dev file");
+      return smprintf("");
+    }
+
+  calculatespeed(downstr, newrec, rec);
+  calculatespeed(upstr, newsent, sent);
+
+  rec = newrec;
+  sent = newsent;
+  return smprintf("down: %s up: %s", downstr, upstr);
+}
+
 /* CPU info */
 
 #define STAT_FILE "/proc/stat"
@@ -357,12 +436,14 @@ int
 main(void)
 {
 	char *status;
+	char *net;
 	char *cpu;
 	char *temp;
 	char *batt;
 	char *tmloc;
 
 	int counter = 0;
+	int net_interval   = 1;
 	int cpu_interval   = 2;
 	int temp_interval  = 30;
 	int batt_interval  = 30;
@@ -379,16 +460,18 @@ main(void)
 
 	/* Regular updates */
 	for (;;sleep(1)) {
+	        if (counter % net_interval == 0)   net = getnetusage();
 	        if (counter % cpu_interval == 0)   cpu  = getcpuload();
 		if (counter % temp_interval == 0)  temp = gettemperature();
 	        if (counter % batt_interval == 0)  batt = getbattery();
 		if (counter % tmloc_interval == 0)
 		  tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-		status = smprintf("%s | %s | %s | %s",
-				  cpu, temp, batt, tmloc);
+		status = smprintf("%s | %s | %s | %s | %s",
+				  net, cpu, temp, batt, tmloc);
 		setstatus(status);
 
+		if (!net)   free(net);
 		if (!cpu)   free(cpu);
 		if (!temp)  free(temp);
 		if (!batt)  free(batt);
