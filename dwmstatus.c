@@ -15,7 +15,7 @@
   - Date and time
 */
 
-#define _BSD_SOURCE
+#define _DEFAULT_SOURCE
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,12 +28,16 @@
 #include <sys/wait.h>
 #include <alsa/asoundlib.h>
 #include <alsa/control.h>
+#include <ifaddrs.h>
+#include <linux/wireless.h>
+#include <sys/ioctl.h>
+#include <err.h>
 
 #include <X11/Xlib.h>
 
 static Display *dpy;
 
-/* C string utility */
+/* C string utilities */
 
 char *
 smprintf(char *fmt, ...)
@@ -152,6 +156,7 @@ mktimestz(char *fmt, char *tzname)
 /* Network info */
 
 #define NETDEV_FILE "/proc/net/dev"
+#define WIFICARD    "wlp3s0"
 
 int
 parsenetdev(unsigned long long int *receivedabs, unsigned long long int *sentabs)
@@ -198,11 +203,11 @@ calculatespeed(char *speedstr, unsigned long long int newval, unsigned long long
   if (speed > 1024.0)
     {
       speed /= 1024.0;
-      sprintf(speedstr, "%4.1f MB/s", speed);
+      sprintf(speedstr, "%4.1f MiB/s", speed);
     }
   else
     {
-      sprintf(speedstr, "%4.0f KB/s", speed);
+      sprintf(speedstr, "%4.0f KiB/s", speed);
     }
 }
 
@@ -226,6 +231,79 @@ getnetusage(void)
   rec = newrec;
   sent = newsent;
   return smprintf("down: %s up: %s", downstr, upstr);
+}
+
+char *
+wifi_perc()
+{
+  int strength;
+  char buf[255];
+  char *datastart;
+  char status[5];
+  FILE *fp;
+
+  fp = fopen("/sys/class/net/wlp3s0/operstate", "r");
+
+  if(fp == NULL)
+    {
+      warn("Error opening wifi operstate file");
+      return smprintf("");
+    }
+
+  fgets(status, 5, fp);
+  fclose(fp);
+  if(strcmp(status, "up\n") != 0)
+    return smprintf("");
+
+  fp = fopen("/proc/net/wireless", "r");
+  if (fp == NULL)
+    {
+      warn("Error opening wireless file");
+      return smprintf("");
+    }
+
+  fgets(buf, sizeof(buf), fp);
+  fgets(buf, sizeof(buf), fp);
+  fgets(buf, sizeof(buf), fp);
+
+  datastart = strstr(buf, "wlp3s0:");
+  if (datastart != NULL)
+    {
+      datastart = strstr(buf, ":");
+      sscanf(datastart + 1, " %*d   %d  %*d  %*d		  %*d	   %*d		%*d		 %*d	  %*d		 %*d", &strength);
+    }
+
+  fclose(fp);
+
+  return smprintf("%d%%", strength);
+}
+
+char *
+wifi_essid()
+{
+  char id[IW_ESSID_MAX_SIZE+1];
+  int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+  struct iwreq wreq;
+
+  memset(&wreq, 0, sizeof(struct iwreq));
+  wreq.u.essid.length = IW_ESSID_MAX_SIZE+1;
+  sprintf(wreq.ifr_name, WIFICARD);
+  if(sockfd == -1)
+    {
+      warn("Cannot open socket for interface: %s", WIFICARD);
+      return smprintf("");
+    }
+  wreq.u.essid.pointer = id;
+  if (ioctl(sockfd,SIOCGIWESSID, &wreq) == -1)
+    {
+      warn("Get ESSID ioctl failed for interface %s", WIFICARD);
+      return smprintf("");
+    }
+
+  if (strcmp((char *)wreq.u.essid.pointer, "") == 0)
+    return smprintf("");
+  else
+    return smprintf("%s", (char *)wreq.u.essid.pointer);
 }
 
 /* CPU info */
@@ -436,6 +514,8 @@ int
 main(void)
 {
 	char *status;
+	char *ssid;
+	char *wifi;
 	char *net;
 	char *cpu;
 	char *temp;
@@ -443,6 +523,8 @@ main(void)
 	char *tmloc;
 
 	int counter = 0;
+	int ssid_interval  = 1;
+	int wifi_interval  = 1;
 	int net_interval   = 1;
 	int cpu_interval   = 2;
 	int temp_interval  = 30;
@@ -460,17 +542,21 @@ main(void)
 
 	/* Regular updates */
 	for (;;sleep(1)) {
-	        if (counter % net_interval == 0)   net = getnetusage();
+	        if (counter % ssid_interval == 0)  ssid = wifi_essid();
+	        if (counter % wifi_interval == 0)  wifi = wifi_perc();
+	        if (counter % net_interval == 0)   net  = getnetusage();
 	        if (counter % cpu_interval == 0)   cpu  = getcpuload();
 		if (counter % temp_interval == 0)  temp = gettemperature();
 	        if (counter % batt_interval == 0)  batt = getbattery();
 		if (counter % tmloc_interval == 0)
 		  tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-		status = smprintf("%s | %s | %s | %s | %s",
-				  net, cpu, temp, batt, tmloc);
+		status = smprintf("%s %s %s | %s | %s | %s | %s",
+				  ssid, wifi, net, cpu, temp, batt, tmloc);
 		setstatus(status);
 
+		if (!ssid)  free(ssid);
+		if (!wifi)  free(wifi);
 		if (!net)   free(net);
 		if (!cpu)   free(cpu);
 		if (!temp)  free(temp);
