@@ -180,7 +180,7 @@ parsenetdev(unsigned long long int *receivedabs, unsigned long long int *sentabs
 
   if (fp == NULL)
     {
-      warn("Error opening %s\n", NETDEV_FILE);
+      warn("Error opening %s", NETDEV_FILE);
       return rval;
     }
 
@@ -264,7 +264,7 @@ getwifistrength()
 
   if(fp == NULL)
     {
-      warn("Error opening %s\n", WIFI_OPERSTATE_FILE);
+      warn("Error opening %s", WIFI_OPERSTATE_FILE);
       return smprintf("");
     }
 
@@ -277,13 +277,14 @@ getwifistrength()
 
   if (fp == NULL)
     {
-      warn("Error opening %s\n", WIRELESS_FILE);
+      warn("Error opening %s", WIRELESS_FILE);
       return smprintf("");
     }
 
   fgets(buf, sizeof(buf), fp);
   fgets(buf, sizeof(buf), fp);
   fgets(buf, sizeof(buf), fp);
+  fclose(fp);
 
   datastart = strstr(buf, WIFICARD":");
   if (datastart != NULL)
@@ -291,8 +292,6 @@ getwifistrength()
       datastart = strstr(buf, ":");
       sscanf(datastart + 1, " %*d   %d  %*d  %*d		  %*d	   %*d		%*d		 %*d	  %*d		 %*d", &strength);
     }
-
-  fclose(fp);
 
   return smprintf("%d%%", strength);
 }
@@ -319,6 +318,7 @@ getwifiessid()
       return smprintf("");
     }
 
+  close(sockfd);
   if (strcmp((char *)wreq.u.essid.pointer, "") == 0)
     return smprintf("");
   else
@@ -339,7 +339,6 @@ getwifi(void)
 
   free(strength);
   if (!essid) free(essid);
-  //free(essid);
 
   return wifi;
 }
@@ -387,7 +386,7 @@ getcpuload(void)
 
   if (fp == NULL)
     {
-      warn("Error opening %s\n", STAT_FILE);
+      warn("Error opening %s", STAT_FILE);
       return smprintf("");
     }
   
@@ -448,7 +447,7 @@ gettemperature(void)
 
   if (fp == NULL)
     {
-      warn("Error opening %s\n", TEMP_INPUT);
+      warn("Error opening %s", TEMP_INPUT);
       return smprintf("");
     }
 
@@ -459,7 +458,7 @@ gettemperature(void)
 
   if (fp == NULL)
     {
-      warn("Error opening %s\n", TEMP_CRIT);
+      warn("Error opening %s", TEMP_CRIT);
       return smprintf("");
     }
 
@@ -499,7 +498,7 @@ getbattery()
 
   if (fp == NULL)
     {
-      warn("Error opening %s\n", BATT_NOW);
+      warn("Error opening %s", BATT_NOW);
       return smprintf("");
     }
 
@@ -510,7 +509,7 @@ getbattery()
 
   if (fp == NULL)
     {
-      warn("Error opening %s\n", BATT_FULL);
+      warn("Error opening %s", BATT_FULL);
       return smprintf("");
     }
   
@@ -521,7 +520,7 @@ getbattery()
 
   if (fp == NULL)
     {
-      warn("Error opening %s\n", BATT_STATUS);
+      warn("Error opening %s", BATT_STATUS);
       return smprintf("");
     }
   
@@ -532,7 +531,7 @@ getbattery()
 
   if (fp == NULL)
     {
-      warn("Error opening %s\n", POW_NOW);
+      warn("Error opening %s", POW_NOW);
       return smprintf("");
     }
 
