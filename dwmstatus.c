@@ -338,7 +338,7 @@ getwifi(void)
     wifi = smprintf("%s %s", essid, strength);
 
   free(strength);
-  if (!essid) free(essid);
+  free(essid);
 
   return wifi;
 }
@@ -563,7 +563,8 @@ getbattery()
     }
   else if (strcmp(status,"Full") == 0)
     s = GLYPH_FULL;
-  
+
+  free(status);
   if ( energy < 0 || pow <= 0)
     return smprintf("%s%3ld%%", s,pct);
   else
@@ -625,12 +626,12 @@ main(void)
 				  wifi, bw, cpu, temp, batt, tmloc);
 		setstatus(status);
 
-		if (!wifi)  free(wifi);
-		if (!bw)    free(bw);
-		if (!cpu)   free(cpu);
-		if (!temp)  free(temp);
-		if (!batt)  free(batt);
-		if (!tmloc) free(tmloc);
+		if ((counter+1) % wifi_interval == 0)  free(wifi);
+	        if ((counter+1) % bw_interval == 0)    free(bw);
+	        if ((counter+1) % cpu_interval == 0)   free(cpu);
+		if ((counter+1) % temp_interval == 0)  free(temp);
+	        if ((counter+1) % batt_interval == 0)  free(batt);
+		if ((counter+1) % tmloc_interval == 0) free(tmloc);
 		free(status);
 
 		counter = (counter + 1) % max_interval;
