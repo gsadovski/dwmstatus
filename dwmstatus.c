@@ -3,7 +3,7 @@
   Song played in Artist - Name format
   - Volume
   Disk usage - home and root
-  Network monitoring - should display SSID in green when connected or
+  - Network monitoring - should display SSID in green when connected or
                        'down' in red when not connected. Preferably would
 		       also display signal strength with color dependant on
 		       the value. Finally it should also display download and
@@ -44,25 +44,26 @@ static Display *dpy;
 char *
 smprintf(char *fmt, ...)
 {
-	va_list fmtargs;
-	char *ret;
-	int len;
+  va_list fmtargs;
+  char *ret;
+  int len;
 
-	va_start(fmtargs, fmt);
-	len = vsnprintf(NULL, 0, fmt, fmtargs);
-	va_end(fmtargs);
+  va_start(fmtargs, fmt);
+  len = vsnprintf(NULL, 0, fmt, fmtargs);
+  va_end(fmtargs);
 
-	ret = malloc(++len);
-	if (ret == NULL) {
-		warn("malloc");
-		exit(1);
-	}
+  ret = malloc(++len);
+  if (ret == NULL)
+    {
+      warn("malloc");
+      exit(1);
+    }
 
-	va_start(fmtargs, fmt);
-	vsnprintf(ret, len, fmt, fmtargs);
-	va_end(fmtargs);
+  va_start(fmtargs, fmt);
+  vsnprintf(ret, len, fmt, fmtargs);
+  va_end(fmtargs);
 	
-	return ret;
+  return ret;
 }
 
 /* Volume info */
@@ -105,14 +106,20 @@ getvol(void)
   snd_mixer_selem_get_playback_switch(elem, 0, &mute_state);
   
   if(!mute_state)
-    return smprintf("%s MUTE", GLYPH_VOL_MUTE);
+    {
+      return smprintf("%s MUTE", GLYPH_VOL_MUTE);
+    }
 
   pct_vol = (int)((float)(vol * 100) / max + 0.5);
 
   if (pct_vol < 50)
-    s = GLYPH_VOL_LOW;
+    {
+      s = GLYPH_VOL_LOW;
+    }
   else
-    s = GLYPH_VOL_HIGH;
+    {
+      s = GLYPH_VOL_HIGH;
+    }
   
   snd_mixer_selem_id_free(s_elem);
   snd_mixer_close(handle);
@@ -132,15 +139,17 @@ mktimes(char *fmt)
 	memset(buf, 0, sizeof(buf));
 	tim = time(NULL);
 	timtm = localtime(&tim);
-	if (timtm == NULL) {
-		warn("localtime");
-		exit(1);
-	}
+	if (timtm == NULL)
+	  {
+	    warn("Error when calling localtime");
+	    return smprintf("");
+	  }
 
-	if (!strftime(buf, sizeof(buf)-1, fmt, timtm)) {
-		fprintf(stderr, "strftime == 0\n");
-		exit(1);
-	}
+	if (!strftime(buf, sizeof(buf)-1, fmt, timtm))
+	  {
+	    warn("strftime == 0");
+	    return smprintf("");
+	  }
 
 	return smprintf("%s", buf);
 }
@@ -175,35 +184,38 @@ parsenetdev(unsigned long long int *receivedabs, unsigned long long int *sentabs
   unsigned long long int receivedacc, sentacc;
 
   bufsize = 255;
-  fp = fopen(NETDEV_FILE, "r");
   rval = 1;
 
-  if (fp == NULL)
+  if ((fp = fopen(NETDEV_FILE, "r")))
+    {
+      // Ignore the first two lines of the file
+      fgets(buf, bufsize, fp);
+      fgets(buf, bufsize, fp);
+  
+      while (fgets(buf, bufsize, fp))
+	{
+	  if ((datastart = strstr(buf, "lo:")) == NULL)
+	    {
+	      datastart = strstr(buf, ":");
+	  
+	      // With thanks to the conky project at http://conky.sourceforge.net/
+	      sscanf(datastart + 1,
+		     "%llu  %*d     %*d  %*d  %*d  %*d   %*d        %*d       %llu",
+		     &receivedacc, &sentacc);
+
+	      *receivedabs += receivedacc;
+	      *sentabs += sentacc;
+	      rval = 0;
+	    }
+	}
+
+      fclose(fp);
+    }
+  else
     {
       warn("Error opening %s", NETDEV_FILE);
-      return rval;
     }
 
-  // Ignore the first two lines of the file
-  fgets(buf, bufsize, fp);
-  fgets(buf, bufsize, fp);
-  
-  while (fgets(buf, bufsize, fp))
-    {
-      if ((datastart = strstr(buf, "lo:")) == NULL)
-	{
-	  datastart = strstr(buf, ":");
-	  
-	  // With thanks to the conky project at http://conky.sourceforge.net/
-	  sscanf(datastart + 1, "%llu  %*d     %*d  %*d  %*d  %*d   %*d        %*d       %llu",	\
-		 &receivedacc, &sentacc);
-	  *receivedabs += receivedacc;
-	  *sentabs += sentacc;
-	  rval = 0;
-	}
-    }
-
-  fclose(fp);
   return rval;
 }
 
@@ -258,33 +270,37 @@ getwifistrength()
   char buf[255];
   char *datastart;
   char status[5];
-  FILE *fp;
+  FILE *fp = NULL;
 
-  fp = fopen(WIFI_OPERSTATE_FILE, "r");
-
-  if(fp == NULL)
+  if((fp = fopen(WIFI_OPERSTATE_FILE, "r")))
+    {
+      fgets(status, 5, fp);
+      fclose(fp);
+    }
+  else
     {
       warn("Error opening %s", WIFI_OPERSTATE_FILE);
       return smprintf("");
     }
 
-  fgets(status, 5, fp);
-  fclose(fp);
   if(strcmp(status, "up\n") != 0)
-    return smprintf("");
+    {
+      return smprintf("");
+    }
 
-  fp = fopen(WIRELESS_FILE, "r");
-
-  if (fp == NULL)
+  if ((fp = fopen(WIRELESS_FILE, "r")))
+    {
+      fgets(buf, sizeof(buf), fp);
+      fgets(buf, sizeof(buf), fp);
+      fgets(buf, sizeof(buf), fp);
+      fclose(fp);
+    }
+  else
     {
       warn("Error opening %s", WIRELESS_FILE);
       return smprintf("");
     }
 
-  fgets(buf, sizeof(buf), fp);
-  fgets(buf, sizeof(buf), fp);
-  fgets(buf, sizeof(buf), fp);
-  fclose(fp);
 
   datastart = strstr(buf, WIFICARD":");
   if (datastart != NULL)
@@ -306,7 +322,7 @@ getwifiessid()
   memset(&wreq, 0, sizeof(struct iwreq));
   wreq.u.essid.length = IW_ESSID_MAX_SIZE+1;
   sprintf(wreq.ifr_name, WIFICARD);
-  if(sockfd == -1)
+  if (sockfd == -1)
     {
       warn("Cannot open socket for interface: %s", WIFICARD);
       return smprintf("");
@@ -317,12 +333,16 @@ getwifiessid()
       warn("Get ESSID ioctl failed for interface %s", WIFICARD);
       return smprintf("");
     }
-
+  
   close(sockfd);
   if (strcmp((char *)wreq.u.essid.pointer, "") == 0)
-    return smprintf("");
+    {
+      return smprintf("");
+    }
   else
-    return (char *)wreq.u.essid.pointer;
+    {
+      return smprintf("%s", (char *)wreq.u.essid.pointer);
+    }
 }
 
 char *
@@ -333,9 +353,13 @@ getwifi(void)
   char *wifi;
 
   if (strcmp(essid, "") == 0)
-    wifi = smprintf("");
+    {
+      wifi = smprintf("");
+    }
   else
-    wifi = smprintf("%s %s", essid, strength);
+    {
+      wifi = smprintf("%s %s", essid, strength);
+    }
 
   free(strength);
   free(essid);
@@ -382,21 +406,22 @@ getcpuload(void)
       return smprintf("");
     }
 
-  fp = fopen(STAT_FILE, "r");
+  memcpy(&tics_prv, &tics_cur, sizeof(CT_t));
 
-  if (fp == NULL)
+  if ((fp = fopen(STAT_FILE, "r")))
+    {
+      fscanf(fp, "cpu %llu %llu %llu %llu %llu %llu %llu %llu"
+	     , &tics_cur.u, &tics_cur.n, &tics_cur.s
+	     , &tics_cur.i, &tics_cur.w, &tics_cur.x
+	     , &tics_cur.y, &tics_cur.z);
+      fclose(fp);
+    }
+  else
     {
       warn("Error opening %s", STAT_FILE);
       return smprintf("");
     }
   
-  memcpy(&tics_prv, &tics_cur, sizeof(CT_t));
-  fscanf(fp, "cpu %llu %llu %llu %llu %llu %llu %llu %llu"
-	 , &tics_cur.u, &tics_cur.n, &tics_cur.s
-	 , &tics_cur.i, &tics_cur.w, &tics_cur.x
-	 , &tics_cur.y, &tics_cur.z);
-  fclose(fp);
-
   tics_cur.tot = tics_cur.u + tics_cur.s
     + tics_cur.n + tics_cur.i + tics_cur.w
     + tics_cur.x + tics_cur.y + tics_cur.z;
@@ -443,27 +468,27 @@ gettemperature(void)
   long temp, tempc;
   FILE *fp = NULL;
   
-  fp = fopen(TEMP_INPUT, "r");
-
-  if (fp == NULL)
+  if ((fp = fopen(TEMP_INPUT, "r")))
+    {
+      fscanf(fp, "%ld\n", &temp);
+      fclose(fp);
+    }
+  else
     {
       warn("Error opening %s", TEMP_INPUT);
       return smprintf("");
     }
 
-  fscanf(fp, "%ld\n", &temp);
-  fclose(fp);
-
-  fp = fopen(TEMP_CRIT, "r");
-
-  if (fp == NULL)
+  if ((fp = fopen(TEMP_CRIT, "r")))
+    {
+      fscanf(fp, "%ld\n", &tempc);
+      fclose(fp);
+    }
+  else
     {
       warn("Error opening %s", TEMP_CRIT);
       return smprintf("");
     }
-
-  fscanf(fp, "%ld\n", &tempc);
-  fclose(fp);
 
   return smprintf(" %3ld°C", temp / 1000);
 }
@@ -487,64 +512,64 @@ gettemperature(void)
 char *
 getbattery()
 {
-  long lnum1, lnum2 = 0;
+  long battnow, battfull = 0;
   long pow, pct, energy = -1;
   long mm, hh;
   char *status = malloc(sizeof(char)*12);
   char *s = GLYPH_UNKWN;
   FILE *fp = NULL;
 
-  fp = fopen(BATT_NOW, "r");
-
-  if (fp == NULL)
+  if ((fp = fopen(BATT_NOW, "r")))
+    {
+      fscanf(fp, "%ld\n", &battnow);
+      fclose(fp);
+    }
+  else
     {
       warn("Error opening %s", BATT_NOW);
       return smprintf("");
     }
-
-  fscanf(fp, "%ld\n", &lnum1);
-  fclose(fp);
   
-  fp = fopen(BATT_FULL, "r");
-
-  if (fp == NULL)
+  if ((fp = fopen(BATT_FULL, "r")))
+    {
+      fscanf(fp, "%ld\n", &battfull);
+      fclose(fp);
+    }
+  else
     {
       warn("Error opening %s", BATT_FULL);
       return smprintf("");
     }
   
-  fscanf(fp, "%ld\n", &lnum2);
-  fclose(fp);
-
-  fp = fopen(BATT_STATUS, "r");
-
-  if (fp == NULL)
+  if ((fp = fopen(BATT_STATUS, "r")))
+    {
+      fscanf(fp, "%s\n", status);
+      fclose(fp);
+    }
+  else
     {
       warn("Error opening %s", BATT_STATUS);
       return smprintf("");
     }
   
-  fscanf(fp, "%s\n", status);
-  fclose(fp);
-
-  fp = fopen(POW_NOW, "r");
-
-  if (fp == NULL)
+  if ((fp = fopen(POW_NOW, "r")))
+    {
+      fscanf(fp, "%ld\n", &pow);
+      fclose(fp);
+    }
+  else
     {
       warn("Error opening %s", POW_NOW);
       return smprintf("");
     }
-
-  fscanf(fp, "%ld\n", &pow);
-  fclose(fp);
-
-  pct = (lnum1/(lnum2/100));
+  
+  pct = 100*battnow/battfull;
 
   if (strcmp(status,"Charging") == 0)
     {
       s = GLYPH_CHRG;
       
-      energy = lnum2 - lnum1;
+      energy = battfull - battnow;
     }
   else if (strcmp(status,"Discharging") == 0)
     {
@@ -559,14 +584,16 @@ getbattery()
       else
 	s = GLYPH_DCHRG_4;
       
-      energy = lnum1;
+      energy = battnow;
     }
   else if (strcmp(status,"Full") == 0)
     s = GLYPH_FULL;
 
   free(status);
   if ( energy < 0 || pow <= 0)
-    return smprintf("%s%3ld%%", s,pct);
+    {
+      return smprintf("%s%3ld%%", s,pct);
+    }
   else
     {
       hh = energy / pow;
@@ -580,65 +607,65 @@ getbattery()
 void
 setstatus(char *str)
 {
-	XStoreName(dpy, DefaultRootWindow(dpy), str);
-	XSync(dpy, False);
+  XStoreName(dpy, DefaultRootWindow(dpy), str);
+  XSync(dpy, False);
 }
 
 int
 main(void)
 {
-	char *status;
-	char *wifi;
-	char *bw;
-	char *cpu;
-	char *temp;
-	char *batt;
-	char *tmloc;
+  char *status;
+  char *wifi;
+  char *bw;
+  char *cpu;
+  char *temp;
+  char *batt;
+  char *tmloc;
 
-	int counter = 0;
-	int wifi_interval  = 2;
-	int bw_interval    = 1;
-	int cpu_interval   = 2;
-	int temp_interval  = 30;
-	int batt_interval  = 30;
-	int tmloc_interval = 1;
-	int max_interval   = 30;
+  int counter = 0;
+  int wifi_interval  = 2;
+  int bw_interval    = 1;
+  int cpu_interval   = 2;
+  int temp_interval  = 30;
+  int batt_interval  = 30;
+  int tmloc_interval = 1;
+  int max_interval   = 30;
 
-	/* Run functions that have to be run only once */
-	getnumcpus();
+  /* Run functions that have to be run only once */
+  getnumcpus();
 
-	if (!(dpy = XOpenDisplay(NULL))) {
-		fprintf(stderr, "dwmstatus: cannot open display.\n");
-		return 1;
-	}
+  if (!(dpy = XOpenDisplay(NULL))) {
+    fprintf(stderr, "dwmstatus: cannot open display.\n");
+    return 1;
+  }
 
-	/* Regular updates */
-	for (;;sleep(1)) {
-	        if (counter % wifi_interval == 0)  wifi = getwifi();
-	        if (counter % bw_interval == 0)    bw   = getbandwidth();
-	        if (counter % cpu_interval == 0)   cpu  = getcpuload();
-		if (counter % temp_interval == 0)  temp = gettemperature();
-	        if (counter % batt_interval == 0)  batt = getbattery();
-		if (counter % tmloc_interval == 0)
-		  tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
+  /* Regular updates */
+  for (;;sleep(1))
+    {
+      if (counter % wifi_interval == 0)  wifi = getwifi();
+      if (counter % bw_interval == 0)    bw   = getbandwidth();
+      if (counter % cpu_interval == 0)   cpu  = getcpuload();
+      if (counter % temp_interval == 0)  temp = gettemperature();
+      if (counter % batt_interval == 0)  batt = getbattery();
+      if (counter % tmloc_interval == 0) tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-		status = smprintf("%s %s | %s | %s | %s | %s",
-				  wifi, bw, cpu, temp, batt, tmloc);
-		setstatus(status);
-
-		if ((counter+1) % wifi_interval == 0)  free(wifi);
-	        if ((counter+1) % bw_interval == 0)    free(bw);
-	        if ((counter+1) % cpu_interval == 0)   free(cpu);
-		if ((counter+1) % temp_interval == 0)  free(temp);
-	        if ((counter+1) % batt_interval == 0)  free(batt);
-		if ((counter+1) % tmloc_interval == 0) free(tmloc);
-		free(status);
-
-		counter = (counter + 1) % max_interval;
-	}
-
-	XCloseDisplay(dpy);
-
-	return 0;
+      status = smprintf("%s %s | %s | %s | %s | %s",
+			wifi, bw, cpu, temp, batt, tmloc);
+      setstatus(status);
+	    
+      counter = (counter + 1) % max_interval;
+      if (counter % wifi_interval == 0)  free(wifi);
+      if (counter % bw_interval == 0)    free(bw);
+      if (counter % cpu_interval == 0)   free(cpu);
+      if (counter % temp_interval == 0)  free(temp);
+      if (counter % batt_interval == 0)  free(batt);
+      if (counter % tmloc_interval == 0) free(tmloc);
+	    
+      free(status);
+    }
+	
+  XCloseDisplay(dpy);
+	
+  return 0;
 }
 
