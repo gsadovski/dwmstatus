@@ -13,6 +13,7 @@
   - CPU temperatures - Coloured red above a threshold
   - Battery indicator - color dependadnt with icon depending on state.
   - Date and time
+  Automatically detect time zone
 */
 
 #define _DEFAULT_SOURCE
@@ -32,6 +33,7 @@
 #include <linux/wireless.h>
 #include <sys/ioctl.h>
 #include <err.h>
+#include <errno.h>
 
 #include <X11/Xlib.h>
 
@@ -52,7 +54,7 @@ smprintf(char *fmt, ...)
 
 	ret = malloc(++len);
 	if (ret == NULL) {
-		perror("malloc");
+		warn("malloc");
 		exit(1);
 	}
 
@@ -93,7 +95,7 @@ getvol(void)
     {
       snd_mixer_selem_id_free(s_elem);
       snd_mixer_close(handle);
-      perror("alsa error");
+      warn("alsa error");
       return smprintf("");
     }
   
@@ -131,7 +133,7 @@ mktimes(char *fmt)
 	tim = time(NULL);
 	timtm = localtime(&tim);
 	if (timtm == NULL) {
-		perror("localtime");
+		warn("localtime");
 		exit(1);
 	}
 
@@ -155,8 +157,12 @@ mktimestz(char *fmt, char *tzname)
 
 /* Network info */
 
-#define NETDEV_FILE "/proc/net/dev"
-#define WIFICARD    "wlp3s0"
+#define WIFICARD             "wlp3s0"
+#define WIREDCARD            "eth0"
+#define NETDEV_FILE          "/proc/net/dev"
+#define WIFI_OPERSTATE_FILE  "/sys/class/net/"WIFICARD"/operstate"
+#define WIRED_OPERSTATE_FILE "/sys/class/net/"WIREDCARD"/operstate"
+#define WIRELESS_FILE        "/proc/net/wireless"
 
 int
 parsenetdev(unsigned long long int *receivedabs, unsigned long long int *sentabs)
@@ -165,17 +171,23 @@ parsenetdev(unsigned long long int *receivedabs, unsigned long long int *sentabs
   char *datastart;
   static int bufsize;
   int rval;
-  FILE *fp;
+  FILE *fp = NULL;
   unsigned long long int receivedacc, sentacc;
 
   bufsize = 255;
   fp = fopen(NETDEV_FILE, "r");
   rval = 1;
 
+  if (fp == NULL)
+    {
+      warn("Error opening %s\n", NETDEV_FILE);
+      return rval;
+    }
+
   // Ignore the first two lines of the file
   fgets(buf, bufsize, fp);
   fgets(buf, bufsize, fp);
-
+  
   while (fgets(buf, bufsize, fp))
     {
       if ((datastart = strstr(buf, "lo:")) == NULL)
@@ -190,51 +202,57 @@ parsenetdev(unsigned long long int *receivedabs, unsigned long long int *sentabs
 	  rval = 0;
 	}
     }
-  
+
   fclose(fp);
   return rval;
 }
 
-void
-calculatespeed(char *speedstr, unsigned long long int newval, unsigned long long int oldval)
+char *
+calculatespeed(unsigned long long int newval, unsigned long long int oldval)
 {
   double speed;
   speed = (newval - oldval) / 1024.0;
   if (speed > 1024.0)
     {
       speed /= 1024.0;
-      sprintf(speedstr, "%4.1f MiB/s", speed);
+      return smprintf("%4.1f MiB/s", speed);
     }
   else
     {
-      sprintf(speedstr, "%4.0f KiB/s", speed);
+      return smprintf("%4.0f KiB/s", speed);
     }
 }
 
 char *
-getnetusage(void)
+getbandwidth(void)
 {
   static unsigned long long int rec, sent;
   unsigned long long int newrec, newsent;
   newrec = newsent = 0;
-  char downstr[15], upstr[15];
-  
+  char *downstr, *upstr;
+  char *bandwidth;
+
   if (parsenetdev(&newrec, &newsent))
     {
-      perror("Error when parsing /proc/net/dev file");
+      warn("Error when parsing %s file", NETDEV_FILE);
       return smprintf("");
     }
 
-  calculatespeed(downstr, newrec, rec);
-  calculatespeed(upstr, newsent, sent);
+  downstr = calculatespeed(newrec, rec);
+  upstr = calculatespeed(newsent, sent);
 
   rec = newrec;
   sent = newsent;
-  return smprintf("down: %s up: %s", downstr, upstr);
+  bandwidth = smprintf("▼ %s ▲ %s", downstr, upstr);
+
+  free(downstr);
+  free(upstr);
+  
+  return bandwidth;
 }
 
 char *
-wifi_perc()
+getwifistrength()
 {
   int strength;
   char buf[255];
@@ -242,11 +260,11 @@ wifi_perc()
   char status[5];
   FILE *fp;
 
-  fp = fopen("/sys/class/net/wlp3s0/operstate", "r");
+  fp = fopen(WIFI_OPERSTATE_FILE, "r");
 
   if(fp == NULL)
     {
-      warn("Error opening wifi operstate file");
+      warn("Error opening %s\n", WIFI_OPERSTATE_FILE);
       return smprintf("");
     }
 
@@ -255,10 +273,11 @@ wifi_perc()
   if(strcmp(status, "up\n") != 0)
     return smprintf("");
 
-  fp = fopen("/proc/net/wireless", "r");
+  fp = fopen(WIRELESS_FILE, "r");
+
   if (fp == NULL)
     {
-      warn("Error opening wireless file");
+      warn("Error opening %s\n", WIRELESS_FILE);
       return smprintf("");
     }
 
@@ -266,7 +285,7 @@ wifi_perc()
   fgets(buf, sizeof(buf), fp);
   fgets(buf, sizeof(buf), fp);
 
-  datastart = strstr(buf, "wlp3s0:");
+  datastart = strstr(buf, WIFICARD":");
   if (datastart != NULL)
     {
       datastart = strstr(buf, ":");
@@ -279,7 +298,7 @@ wifi_perc()
 }
 
 char *
-wifi_essid()
+getwifiessid()
 {
   char id[IW_ESSID_MAX_SIZE+1];
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -303,7 +322,26 @@ wifi_essid()
   if (strcmp((char *)wreq.u.essid.pointer, "") == 0)
     return smprintf("");
   else
-    return smprintf("%s", (char *)wreq.u.essid.pointer);
+    return (char *)wreq.u.essid.pointer;
+}
+
+char *
+getwifi(void)
+{
+  char *strength = getwifistrength();
+  char *essid    = getwifiessid();
+  char *wifi;
+
+  if (strcmp(essid, "") == 0)
+    wifi = smprintf("");
+  else
+    wifi = smprintf("%s %s", essid, strength);
+
+  free(strength);
+  if (!essid) free(essid);
+  //free(essid);
+
+  return wifi;
 }
 
 /* CPU info */
@@ -341,24 +379,24 @@ getcpuload(void)
 
   if (getloadavg(avgs, 3) < 0)
     {
-      perror("cpuload call to getloadavg failed");
+      warn("cpuload call to getloadavg failed");
       return smprintf("");
     }
 
-  if ((fp = fopen(STAT_FILE, "r")))
+  fp = fopen(STAT_FILE, "r");
+
+  if (fp == NULL)
     {
-      memcpy(&tics_prv, &tics_cur, sizeof(CT_t));
-      fscanf(fp, "cpu %llu %llu %llu %llu %llu %llu %llu %llu"
-	     , &tics_cur.u, &tics_cur.n, &tics_cur.s
-	     , &tics_cur.i, &tics_cur.w, &tics_cur.x
-	     , &tics_cur.y, &tics_cur.z);
-      fclose(fp);
-    }
-  else
-    {
-      perror("cpuload failed to read CPU tic values");
+      warn("Error opening %s\n", STAT_FILE);
       return smprintf("");
     }
+  
+  memcpy(&tics_prv, &tics_cur, sizeof(CT_t));
+  fscanf(fp, "cpu %llu %llu %llu %llu %llu %llu %llu %llu"
+	 , &tics_cur.u, &tics_cur.n, &tics_cur.s
+	 , &tics_cur.i, &tics_cur.w, &tics_cur.x
+	 , &tics_cur.y, &tics_cur.z);
+  fclose(fp);
 
   tics_cur.tot = tics_cur.u + tics_cur.s
     + tics_cur.n + tics_cur.i + tics_cur.w
@@ -406,19 +444,27 @@ gettemperature(void)
   long temp, tempc;
   FILE *fp = NULL;
   
-  if ((fp = fopen(TEMP_INPUT, "r")))
+  fp = fopen(TEMP_INPUT, "r");
+
+  if (fp == NULL)
     {
-      fscanf(fp, "%ld\n", &temp);
-      fclose(fp);
-      fp = fopen(TEMP_CRIT, "r");
-      fscanf(fp, "%ld\n", &tempc);
-      fclose(fp);
-    }
-  else
-    {
-      perror("failed to open temperature file");
+      warn("Error opening %s\n", TEMP_INPUT);
       return smprintf("");
     }
+
+  fscanf(fp, "%ld\n", &temp);
+  fclose(fp);
+
+  fp = fopen(TEMP_CRIT, "r");
+
+  if (fp == NULL)
+    {
+      warn("Error opening %s\n", TEMP_CRIT);
+      return smprintf("");
+    }
+
+  fscanf(fp, "%ld\n", &tempc);
+  fclose(fp);
 
   return smprintf(" %3ld°C", temp / 1000);
 }
@@ -448,56 +494,84 @@ getbattery()
   char *status = malloc(sizeof(char)*12);
   char *s = GLYPH_UNKWN;
   FILE *fp = NULL;
-  if ((fp = fopen(BATT_NOW, "r"))) {
-    fscanf(fp, "%ld\n", &lnum1);
-    fclose(fp);
-    fp = fopen(BATT_FULL, "r");
-    fscanf(fp, "%ld\n", &lnum2);
-    fclose(fp);
-    fp = fopen(BATT_STATUS, "r");
-    fscanf(fp, "%s\n", status);
-    fclose(fp);
-    fp = fopen(POW_NOW, "r");
-    fscanf(fp, "%ld\n", &pow);
-    fclose(fp);
-    pct = (lnum1/(lnum2/100));
-    if (strcmp(status,"Charging") == 0)
-      {
-	s = GLYPH_CHRG;
 
-	energy = lnum2 - lnum1;
-      }
-    else if (strcmp(status,"Discharging") == 0)
-      {
-	if (pct < 20)
-	  s = GLYPH_DCHRG_0;
-	else if (pct < 40)
-	  s = GLYPH_DCHRG_1;
-	else if (pct < 60)
-	  s = GLYPH_DCHRG_2;
-	else if (pct < 85)
-	  s = GLYPH_DCHRG_3;
-	else
-	  s = GLYPH_DCHRG_4;
+  fp = fopen(BATT_NOW, "r");
 
-	energy = lnum1;
-      }
-    else if (strcmp(status,"Full") == 0)
-      s = GLYPH_FULL;
+  if (fp == NULL)
+    {
+      warn("Error opening %s\n", BATT_NOW);
+      return smprintf("");
+    }
 
-    if ( energy < 0 || pow <= 0)
-      return smprintf("%s%3ld%%", s,pct);
-    else
-      {
-	hh = energy / pow;
-	mm = (energy % pow) * 60 / pow;
-	return smprintf("%s%3ld%% %2ld:%02ld", s,pct,hh,mm);
-      }
-  }
+  fscanf(fp, "%ld\n", &lnum1);
+  fclose(fp);
+  
+  fp = fopen(BATT_FULL, "r");
+
+  if (fp == NULL)
+    {
+      warn("Error opening %s\n", BATT_FULL);
+      return smprintf("");
+    }
+  
+  fscanf(fp, "%ld\n", &lnum2);
+  fclose(fp);
+
+  fp = fopen(BATT_STATUS, "r");
+
+  if (fp == NULL)
+    {
+      warn("Error opening %s\n", BATT_STATUS);
+      return smprintf("");
+    }
+  
+  fscanf(fp, "%s\n", status);
+  fclose(fp);
+
+  fp = fopen(POW_NOW, "r");
+
+  if (fp == NULL)
+    {
+      warn("Error opening %s\n", POW_NOW);
+      return smprintf("");
+    }
+
+  fscanf(fp, "%ld\n", &pow);
+  fclose(fp);
+
+  pct = (lnum1/(lnum2/100));
+
+  if (strcmp(status,"Charging") == 0)
+    {
+      s = GLYPH_CHRG;
+      
+      energy = lnum2 - lnum1;
+    }
+  else if (strcmp(status,"Discharging") == 0)
+    {
+      if (pct < 20)
+	s = GLYPH_DCHRG_0;
+      else if (pct < 40)
+	s = GLYPH_DCHRG_1;
+      else if (pct < 60)
+	s = GLYPH_DCHRG_2;
+      else if (pct < 85)
+	s = GLYPH_DCHRG_3;
+      else
+	s = GLYPH_DCHRG_4;
+      
+      energy = lnum1;
+    }
+  else if (strcmp(status,"Full") == 0)
+    s = GLYPH_FULL;
+  
+  if ( energy < 0 || pow <= 0)
+    return smprintf("%s%3ld%%", s,pct);
   else
     {
-      perror("getbattery");
-      return smprintf("");
+      hh = energy / pow;
+      mm = (energy % pow) * 60 / pow;
+      return smprintf("%s%3ld%% %2ld:%02ld", s,pct,hh,mm);
     }
 }
 
@@ -514,18 +588,16 @@ int
 main(void)
 {
 	char *status;
-	char *ssid;
 	char *wifi;
-	char *net;
+	char *bw;
 	char *cpu;
 	char *temp;
 	char *batt;
 	char *tmloc;
 
 	int counter = 0;
-	int ssid_interval  = 1;
-	int wifi_interval  = 1;
-	int net_interval   = 1;
+	int wifi_interval  = 2;
+	int bw_interval    = 1;
 	int cpu_interval   = 2;
 	int temp_interval  = 30;
 	int batt_interval  = 30;
@@ -542,22 +614,20 @@ main(void)
 
 	/* Regular updates */
 	for (;;sleep(1)) {
-	        if (counter % ssid_interval == 0)  ssid = wifi_essid();
-	        if (counter % wifi_interval == 0)  wifi = wifi_perc();
-	        if (counter % net_interval == 0)   net  = getnetusage();
+	        if (counter % wifi_interval == 0)  wifi = getwifi();
+	        if (counter % bw_interval == 0)    bw   = getbandwidth();
 	        if (counter % cpu_interval == 0)   cpu  = getcpuload();
 		if (counter % temp_interval == 0)  temp = gettemperature();
 	        if (counter % batt_interval == 0)  batt = getbattery();
 		if (counter % tmloc_interval == 0)
 		  tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-		status = smprintf("%s %s %s | %s | %s | %s | %s",
-				  ssid, wifi, net, cpu, temp, batt, tmloc);
+		status = smprintf("%s %s | %s | %s | %s | %s",
+				  wifi, bw, cpu, temp, batt, tmloc);
 		setstatus(status);
 
-		if (!ssid)  free(ssid);
 		if (!wifi)  free(wifi);
-		if (!net)   free(net);
+		if (!bw)    free(bw);
 		if (!cpu)   free(cpu);
 		if (!temp)  free(temp);
 		if (!batt)  free(batt);
