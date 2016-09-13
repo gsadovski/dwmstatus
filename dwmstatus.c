@@ -269,24 +269,7 @@ getwifistrength()
   int strength;
   char buf[255];
   char *datastart;
-  char status[5];
   FILE *fp = NULL;
-
-  if((fp = fopen(WIFI_OPERSTATE_FILE, "r")))
-    {
-      fgets(status, 5, fp);
-      fclose(fp);
-    }
-  else
-    {
-      warn("Error opening %s", WIFI_OPERSTATE_FILE);
-      return smprintf("");
-    }
-
-  if(strcmp(status, "up\n") != 0)
-    {
-      return smprintf("");
-    }
 
   if ((fp = fopen(WIRELESS_FILE, "r")))
     {
@@ -300,7 +283,6 @@ getwifistrength()
       warn("Error opening %s", WIRELESS_FILE);
       return smprintf("");
     }
-
 
   datastart = strstr(buf, WIFICARD":");
   if (datastart != NULL)
@@ -346,25 +328,53 @@ getwifiessid()
 }
 
 char *
-getwifi(void)
+getconnection(void)
 {
-  char *strength = getwifistrength();
-  char *essid    = getwifiessid();
-  char *wifi;
+  char status[5];
+  char *strength;
+  char *essid;
+  char *connection;
+  FILE *fp = NULL;
 
-  if (strcmp(essid, "") == 0)
+  if((fp = fopen(WIFI_OPERSTATE_FILE, "r")))
     {
-      wifi = smprintf("");
+      fgets(status, 5, fp);
+      fclose(fp);
     }
   else
     {
-      wifi = smprintf("%s %s", essid, strength);
+      warn("Error opening %s", WIFI_OPERSTATE_FILE);
+      return smprintf("");
     }
 
-  free(strength);
-  free(essid);
+  if(strcmp(status, "up\n") == 0)
+    {
+      strength = getwifistrength();
+      essid = getwifiessid();
+      connection = smprintf("%s %s", essid, strength);
+      free(strength);
+      free(essid);
+      return connection;
+    }
 
-  return wifi;
+  if((fp = fopen(WIRED_OPERSTATE_FILE, "r")))
+    {
+      fgets(status, 5, fp);
+      fclose(fp);
+    }
+  else
+    {
+      warn("Error opening %s", WIRED_OPERSTATE_FILE);
+      return smprintf("");
+    }
+
+  if (strcmp(status, "up\n") == 0)
+    {
+      connection = smprintf("Wired");
+      return connection;
+    }
+
+  return smprintf("");
 }
 
 /* CPU info */
@@ -615,7 +625,7 @@ int
 main(void)
 {
   char *status;
-  char *wifi;
+  char *conn;
   char *bw;
   char *cpu;
   char *temp;
@@ -623,7 +633,7 @@ main(void)
   char *tmloc;
 
   int counter = 0;
-  int wifi_interval  = 2;
+  int conn_interval  = 2;
   int bw_interval    = 1;
   int cpu_interval   = 2;
   int temp_interval  = 30;
@@ -642,7 +652,7 @@ main(void)
   /* Regular updates */
   for (;;sleep(1))
     {
-      if (counter % wifi_interval == 0)  wifi = getwifi();
+      if (counter % conn_interval == 0)  conn = getconnection();
       if (counter % bw_interval == 0)    bw   = getbandwidth();
       if (counter % cpu_interval == 0)   cpu  = getcpuload();
       if (counter % temp_interval == 0)  temp = gettemperature();
@@ -650,11 +660,11 @@ main(void)
       if (counter % tmloc_interval == 0) tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
       status = smprintf("%s %s | %s | %s | %s | %s",
-			wifi, bw, cpu, temp, batt, tmloc);
+			conn, bw, cpu, temp, batt, tmloc);
       setstatus(status);
 	    
       counter = (counter + 1) % max_interval;
-      if (counter % wifi_interval == 0)  free(wifi);
+      if (counter % conn_interval == 0)  free(conn);
       if (counter % bw_interval == 0)    free(bw);
       if (counter % cpu_interval == 0)   free(cpu);
       if (counter % temp_interval == 0)  free(temp);
