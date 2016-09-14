@@ -1,19 +1,19 @@
 /* My dwmstatus bar
 
-  Song played in Artist - Name format
-  - Volume
-  Disk usage - home and root
-  - Network monitoring - should display SSID in green when connected or
-                       'down' in red when not connected. Preferably would
-		       also display signal strength with color dependant on
-		       the value. Finally it should also display download and
-		       upload speeds.
-  Memory usage - should not include cache. Should be for both swap and main.
-  - CPU usage - Load average followed by average CPU load
-  - CPU temperatures - Coloured red above a threshold
-  - Battery indicator - color dependadnt with icon depending on state.
-  - Date and time
-  Automatically detect time zone
+   Song played in Artist - Name format
+   - Volume
+   Disk usage - home and root
+   - Network monitoring - should display SSID in green when connected or
+   'down' in red when not connected. Preferably would
+   also display signal strength with color dependant on
+   the value. Finally it should also display download and
+   upload speeds.
+   Memory usage - should not include cache. Should be for both swap and main.
+   - CPU usage - Load average followed by average CPU load
+   - CPU temperatures - Coloured red above a threshold
+   - Battery indicator - color dependadnt with icon depending on state.
+   - Date and time
+   Automatically detect time zone
 */
 
 #define _DEFAULT_SOURCE
@@ -23,17 +23,17 @@
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/time.h>
-#include <time.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <alsa/asoundlib.h>
-#include <alsa/control.h>
-#include <ifaddrs.h>
-#include <linux/wireless.h>
-#include <sys/ioctl.h>
 #include <err.h>
 #include <errno.h>
+#include <time.h>
+#include <ifaddrs.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <alsa/asoundlib.h>
+#include <alsa/control.h>
+#include <linux/wireless.h>
 
 #include <X11/Xlib.h>
 
@@ -55,7 +55,7 @@ smprintf(char *fmt, ...)
   ret = malloc(++len);
   if (ret == NULL)
     {
-      warn("malloc");
+      warn("malloc failed in smprintf");
       exit(1);
     }
 
@@ -132,36 +132,36 @@ getvol(void)
 char *
 mktimes(char *fmt)
 {
-	char buf[129];
-	time_t tim;
-	struct tm *timtm;
+  char buf[129];
+  time_t tim;
+  struct tm *timtm;
 
-	memset(buf, 0, sizeof(buf));
-	tim = time(NULL);
-	timtm = localtime(&tim);
-	if (timtm == NULL)
-	  {
-	    warn("Error when calling localtime");
-	    return smprintf("");
-	  }
+  memset(buf, 0, sizeof(buf));
+  tim = time(NULL);
+  timtm = localtime(&tim);
+  if (timtm == NULL)
+    {
+      warn("Error when calling localtime");
+      return smprintf("");
+    }
 
-	if (!strftime(buf, sizeof(buf)-1, fmt, timtm))
-	  {
-	    warn("strftime == 0");
-	    return smprintf("");
-	  }
+  if (!strftime(buf, sizeof(buf)-1, fmt, timtm))
+    {
+      warn("strftime == 0");
+      return smprintf("");
+    }
 
-	return smprintf("%s", buf);
+  return smprintf("%s", buf);
 }
 
 char *
 mktimestz(char *fmt, char *tzname)
 {
-  	setenv("TZ", tzname, 1);
-	char *buf = mktimes(fmt);
-	unsetenv("TZ");
+  setenv("TZ", tzname, 1);
+  char *buf = mktimes(fmt);
+  unsetenv("TZ");
 
-	return buf;
+  return buf;
 }
 
 /* Network info */
