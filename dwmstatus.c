@@ -66,6 +66,29 @@ smprintf(char *fmt, ...)
   return ret;
 }
 
+int
+readvaluesfromfile(char *fn, char *fmt, ...)
+{
+  va_list fmtargs;
+  FILE* fp = NULL;
+  int rval = 1;
+  
+  if ((fp = fopen(fn, "r")))
+    {
+      va_start(fmtargs, fmt);
+      vfscanf(fp, fmt, fmtargs);
+      va_end(fmtargs);
+      fclose(fp);
+      rval = 0;
+    }
+  else
+    {
+      warn("Error opening %s", fn);
+    }
+
+  return rval;
+}
+
 /* Volume info */
 /* Inexplicably much heavier on resources than the other functions */
 
@@ -244,11 +267,7 @@ getbandwidth(void)
   char *downstr, *upstr;
   char *bandwidth;
 
-  if (parsenetdev(&newrec, &newsent))
-    {
-      warn("Error when parsing %s file", NETDEV_FILE);
-      return smprintf("");
-    }
+  if (parsenetdev(&newrec, &newsent)) return smprintf("");
 
   downstr = calculatespeed(newrec, rec);
   upstr = calculatespeed(newsent, sent);
@@ -334,20 +353,9 @@ getconnection(void)
   char *strength;
   char *essid;
   char *connection;
-  FILE *fp = NULL;
 
-  if((fp = fopen(WIFI_OPERSTATE_FILE, "r")))
-    {
-      fgets(status, 5, fp);
-      fclose(fp);
-    }
-  else
-    {
-      warn("Error opening %s", WIFI_OPERSTATE_FILE);
-      return smprintf("");
-    }
-
-  if(strcmp(status, "up\n") == 0)
+  if (readvaluesfromfile(WIFI_OPERSTATE_FILE, "%s\n", status)) return smprintf("");
+  if(strcmp(status, "up") == 0)
     {
       strength = getwifistrength();
       essid = getwifiessid();
@@ -357,18 +365,8 @@ getconnection(void)
       return connection;
     }
 
-  if((fp = fopen(WIRED_OPERSTATE_FILE, "r")))
-    {
-      fgets(status, 5, fp);
-      fclose(fp);
-    }
-  else
-    {
-      warn("Error opening %s", WIRED_OPERSTATE_FILE);
-      return smprintf("");
-    }
-
-  if (strcmp(status, "up\n") == 0)
+  if (readvaluesfromfile(WIRED_OPERSTATE_FILE, "%s\n", status)) return smprintf("");
+  if (strcmp(status, "up") == 0)
     {
       connection = smprintf("Wired");
       return connection;
@@ -402,7 +400,6 @@ getnumcpus(void)
 char *
 getcpuload(void)
 {
-  static FILE *fp = NULL;
   static CT_t tics_prv;
   static CT_t tics_cur;
   static CT_t tics_frme;
@@ -418,25 +415,14 @@ getcpuload(void)
 
   memcpy(&tics_prv, &tics_cur, sizeof(CT_t));
 
-  if ((fp = fopen(STAT_FILE, "r")))
-    {
-      fscanf(fp, "cpu %llu %llu %llu %llu %llu %llu %llu %llu"
-	     , &tics_cur.u, &tics_cur.n, &tics_cur.s
-	     , &tics_cur.i, &tics_cur.w, &tics_cur.x
-	     , &tics_cur.y, &tics_cur.z);
-      fclose(fp);
-    }
-  else
-    {
-      warn("Error opening %s", STAT_FILE);
+  if (readvaluesfromfile(STAT_FILE, "cpu %llu %llu %llu %llu %llu %llu %llu %llu",
+			 &tics_cur.u, &tics_cur.n, &tics_cur.s, &tics_cur.i,
+			 &tics_cur.w, &tics_cur.x, &tics_cur.y, &tics_cur.z))
       return smprintf("");
-    }
   
-  tics_cur.tot = tics_cur.u + tics_cur.s
-    + tics_cur.n + tics_cur.i + tics_cur.w
-    + tics_cur.x + tics_cur.y + tics_cur.z;
-  tics_cur.edge =
-    ((tics_cur.tot - tics_prv.tot) / num_cpus) / (100 / TICS_EDGE);
+  tics_cur.tot = tics_cur.u + tics_cur.s + tics_cur.n + tics_cur.i +
+      tics_cur.w + tics_cur.x + tics_cur.y + tics_cur.z;
+  tics_cur.edge = ((tics_cur.tot - tics_prv.tot) / num_cpus) / (100 / TICS_EDGE);
 
   tics_frme.u = tics_cur.u - tics_prv.u;
   tics_frme.s = tics_cur.s - tics_prv.s;
@@ -476,29 +462,9 @@ char *
 gettemperature(void)
 {
   long temp, tempc;
-  FILE *fp = NULL;
-  
-  if ((fp = fopen(TEMP_INPUT, "r")))
-    {
-      fscanf(fp, "%ld\n", &temp);
-      fclose(fp);
-    }
-  else
-    {
-      warn("Error opening %s", TEMP_INPUT);
-      return smprintf("");
-    }
 
-  if ((fp = fopen(TEMP_CRIT, "r")))
-    {
-      fscanf(fp, "%ld\n", &tempc);
-      fclose(fp);
-    }
-  else
-    {
-      warn("Error opening %s", TEMP_CRIT);
-      return smprintf("");
-    }
+  if (readvaluesfromfile(TEMP_INPUT, "%ld\n", &temp)) return smprintf("");
+  if (readvaluesfromfile(TEMP_CRIT, "%ld\n", &tempc)) return smprintf("");
 
   return smprintf(" %3ld°C", temp / 1000);
 }
@@ -525,53 +491,13 @@ getbattery()
   long battnow, battfull = 0;
   long pow, pct, energy = -1;
   long mm, hh;
-  char *status = malloc(sizeof(char)*12);
+  char status[12];
   char *s = GLYPH_UNKWN;
-  FILE *fp = NULL;
 
-  if ((fp = fopen(BATT_NOW, "r")))
-    {
-      fscanf(fp, "%ld\n", &battnow);
-      fclose(fp);
-    }
-  else
-    {
-      warn("Error opening %s", BATT_NOW);
-      return smprintf("");
-    }
-  
-  if ((fp = fopen(BATT_FULL, "r")))
-    {
-      fscanf(fp, "%ld\n", &battfull);
-      fclose(fp);
-    }
-  else
-    {
-      warn("Error opening %s", BATT_FULL);
-      return smprintf("");
-    }
-  
-  if ((fp = fopen(BATT_STATUS, "r")))
-    {
-      fscanf(fp, "%s\n", status);
-      fclose(fp);
-    }
-  else
-    {
-      warn("Error opening %s", BATT_STATUS);
-      return smprintf("");
-    }
-  
-  if ((fp = fopen(POW_NOW, "r")))
-    {
-      fscanf(fp, "%ld\n", &pow);
-      fclose(fp);
-    }
-  else
-    {
-      warn("Error opening %s", POW_NOW);
-      return smprintf("");
-    }
+  if (readvaluesfromfile(BATT_NOW, "%ld\n", &battnow)) return smprintf("");
+  if (readvaluesfromfile(BATT_FULL, "%ld\n", &battfull)) return smprintf("");
+  if (readvaluesfromfile(BATT_STATUS, "%s\n", status)) return smprintf("");
+  if (readvaluesfromfile(POW_NOW, "%ld\n", &pow)) return smprintf("");
   
   pct = 100*battnow/battfull;
 
@@ -599,7 +525,6 @@ getbattery()
   else if (strcmp(status,"Full") == 0)
     s = GLYPH_FULL;
 
-  free(status);
   if ( energy < 0 || pow <= 0)
     {
       return smprintf("%s%3ld%%", s,pct);
