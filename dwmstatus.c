@@ -31,6 +31,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
+#include <sys/statvfs.h>
 #include <alsa/asoundlib.h>
 #include <alsa/control.h>
 #include <linux/wireless.h>
@@ -148,6 +149,39 @@ getvol(void)
   snd_mixer_close(handle);
   
   return smprintf("%s%3d%%", s, pct_vol);
+}
+
+/* Disk info */
+
+char *
+diskfree(const char *mountpoint)
+{
+  struct statvfs fs;
+  float freespace;
+  
+  if (statvfs(mountpoint, &fs) < 0)
+    {
+      warn("Could not get %s filesystem info", mountpoint);
+      return smprintf("");
+    }
+
+  freespace = (float)fs.f_bsize * (float)fs.f_bfree / 1024 / 1024 / 1024;
+  if (freespace < 100)
+    return smprintf("%4.1f GiB", freespace);
+  else
+    return smprintf("%.0f GiB", freespace);
+}
+
+char *
+getdiskusage(void)
+{
+  char *root = diskfree("/");
+  char *home = diskfree("/home");
+  char *s = smprintf(" %s  %s", root, home);
+
+  free(root);
+  free(home);
+  return s;
 }
 
 /* Time info */
@@ -553,6 +587,7 @@ main(void)
   char *conn;
   char *bw;
   char *cpu;
+  char *disk;
   char *temp;
   char *batt;
   char *tmloc;
@@ -561,6 +596,7 @@ main(void)
   int conn_interval  = 2;
   int bw_interval    = 1;
   int cpu_interval   = 2;
+  int disk_interval  = 30;
   int temp_interval  = 30;
   int batt_interval  = 30;
   int tmloc_interval = 1;
@@ -580,18 +616,20 @@ main(void)
       if (counter % conn_interval == 0)  conn = getconnection();
       if (counter % bw_interval == 0)    bw   = getbandwidth();
       if (counter % cpu_interval == 0)   cpu  = getcpuload();
+      if (counter % disk_interval == 0)  disk = getdiskusage();
       if (counter % temp_interval == 0)  temp = gettemperature();
       if (counter % batt_interval == 0)  batt = getbattery();
       if (counter % tmloc_interval == 0) tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-      status = smprintf("%s %s | %s | %s | %s | %s",
-			conn, bw, cpu, temp, batt, tmloc);
+      status = smprintf("%s %s | %s | %s | %s | %s | %s",
+			conn, bw, cpu, disk, temp, batt, tmloc);
       setstatus(status);
 	    
       counter = (counter + 1) % max_interval;
       if (counter % conn_interval == 0)  free(conn);
       if (counter % bw_interval == 0)    free(bw);
       if (counter % cpu_interval == 0)   free(cpu);
+      if (counter % disk_interval == 0)  free(disk);
       if (counter % temp_interval == 0)  free(temp);
       if (counter % batt_interval == 0)  free(batt);
       if (counter % tmloc_interval == 0) free(tmloc);
