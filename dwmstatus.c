@@ -1,19 +1,11 @@
 /* My dwmstatus bar
 
-   Song played in Artist - Name format
-   - Volume
-   Disk usage - home and root
-   - Network monitoring - should display SSID in green when connected or
-   'down' in red when not connected. Preferably would
-   also display signal strength with color dependant on
-   the value. Finally it should also display download and
-   upload speeds.
-   Memory usage - should not include cache. Should be for both swap and main.
-   - CPU usage - Load average followed by average CPU load
-   - CPU temperatures - Coloured red above a threshold
-   - Battery indicator - color dependadnt with icon depending on state.
-   - Date and time
-   Automatically detect time zone
+   - Network monitoring - colors + should just display "Network down" in red if not connected
+   - Memory usage - colors
+   - CPU usage - colors
+   - CPU temperatures - colors
+   - Battery indicator - colors
+   - Date and time - Automatically detect time zone
 */
 
 #define _DEFAULT_SOURCE
