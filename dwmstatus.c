@@ -151,6 +151,120 @@ getvol(void)
   return smprintf("%s%3d%%", s, pct_vol);
 }
 
+/* Memory info */
+
+#define MEMINFO_FILE "/proc/meminfo"
+
+typedef struct mem_table_struct
+{
+  const char *name;     /* memory type name */
+  unsigned long *slot; /* slot in return struct */
+} mem_table_struct;
+
+int
+compare_mem_table_structs(const void *a, const void *b)
+{
+  return strcmp(((const mem_table_struct*)a)->name,((const mem_table_struct*)b)->name);
+}
+
+#define BAD_OPEN_MESSAGE					\
+"Error: /proc must be mounted\n"				\
+"  To mount /proc at boot you need an /etc/fstab line like:\n"	\
+"      proc   /proc   proc    defaults\n"			\
+"  In the meantime, run \"mount proc /proc -t proc\"\n"
+
+#define FILE_TO_BUF(filename, fd) do{				\
+    static int local_n;						\
+    if (fd == -1 && (fd = open(filename, O_RDONLY)) == -1) {	\
+	fputs(BAD_OPEN_MESSAGE, stderr);			\
+	fflush(NULL);						\
+	_exit(102);						\
+    }								\
+    lseek(fd, 0L, SEEK_SET);					\
+    if ((local_n = read(fd, buf, sizeof buf - 1)) < 0) {	\
+	perror(filename);					\
+	fflush(NULL);						\
+	_exit(103);						\
+    }								\
+    buf[local_n] = '\0';					\
+}while(0)
+
+char *
+getmeminfo(void)
+{
+  static int meminfo_fd = -1;
+  static char buf[8192];
+  char namebuf[32]; /* big enough to hold any row name */
+  mem_table_struct findme = { namebuf, NULL };
+  mem_table_struct *found;
+  char *head;
+  char *tail;
+  static unsigned long kb_main_buffers;
+  static unsigned long kb_page_cache;
+  static unsigned long kb_main_free;
+  static unsigned long kb_main_total;
+  static unsigned long kb_slab_reclaimable;
+  static unsigned long kb_main_shared;
+  static unsigned long kb_swap_cached;
+  static unsigned long kb_swap_free;
+  static unsigned long kb_swap_total;
+  static const mem_table_struct mem_table[] =
+    {
+      {"Buffers",      &kb_main_buffers},
+      {"Cached",       &kb_page_cache},
+      {"MemFree",      &kb_main_free},
+      {"MemTotal",     &kb_main_total},
+      {"SReclaimable", &kb_slab_reclaimable},
+      {"Shmem",        &kb_main_shared},
+      {"SwapCached",   &kb_swap_cached},
+      {"SwapFree",     &kb_swap_free},
+      {"SwapTotal",    &kb_swap_total},
+    };
+  const int mem_table_count = sizeof(mem_table)/sizeof(mem_table_struct);
+  unsigned long kb_main_cached, kb_swap_used, kb_main_used;
+  float gb_main_used, gb_main_total, gb_swap_used, gb_swap_total;
+
+  FILE_TO_BUF(MEMINFO_FILE,meminfo_fd);
+
+  head = buf;
+  for(;;)
+    {
+      tail = strchr(head, ':');
+      if(!tail) break;
+      *tail = '\0';
+      if(strlen(head) >= sizeof(namebuf))
+	{
+	  head = tail+1;
+	  goto nextline;
+	}
+      strcpy(namebuf,head);
+      found = bsearch(&findme, mem_table, mem_table_count,
+		      sizeof(mem_table_struct), compare_mem_table_structs
+		      );
+      head = tail+1;
+      if(!found) goto nextline;
+      *(found->slot) = (unsigned long)strtoull(head,&tail,10);
+    nextline:
+      tail = strchr(head, '\n');
+      if(!tail) break;
+      head = tail+1;
+    }
+
+  kb_main_cached = kb_page_cache + kb_slab_reclaimable;
+
+  kb_swap_used = kb_swap_total - kb_swap_free - kb_swap_cached;
+  kb_main_used = kb_main_total - kb_main_free - kb_main_cached - kb_main_buffers;
+
+  gb_main_used  = (float)kb_main_used  / 1024 / 1024;
+  gb_main_total = (float)kb_main_total / 1024 / 1024;
+  gb_swap_used  = (float)kb_swap_used  / 1024 / 1024;
+  gb_swap_total = (float)kb_swap_total / 1024 / 1024;
+  
+  return smprintf(" %4.1f/%4.1f GiB  %4.2f/%4.2f GiB",
+		  gb_main_used, gb_main_total,
+		  gb_swap_used, gb_swap_total);
+}
+
 /* Disk info */
 
 char *
@@ -587,6 +701,7 @@ main(void)
   char *conn;
   char *bw;
   char *cpu;
+  char *mem;
   char *disk;
   char *temp;
   char *batt;
@@ -596,6 +711,7 @@ main(void)
   int conn_interval  = 2;
   int bw_interval    = 1;
   int cpu_interval   = 2;
+  int mem_interval   = 2;
   int disk_interval  = 30;
   int temp_interval  = 30;
   int batt_interval  = 30;
@@ -616,19 +732,21 @@ main(void)
       if (counter % conn_interval == 0)  conn = getconnection();
       if (counter % bw_interval == 0)    bw   = getbandwidth();
       if (counter % cpu_interval == 0)   cpu  = getcpuload();
+      if (counter % mem_interval == 0)   mem  = getmeminfo();
       if (counter % disk_interval == 0)  disk = getdiskusage();
       if (counter % temp_interval == 0)  temp = gettemperature();
       if (counter % batt_interval == 0)  batt = getbattery();
       if (counter % tmloc_interval == 0) tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-      status = smprintf("%s %s | %s | %s | %s | %s | %s",
-			conn, bw, cpu, disk, temp, batt, tmloc);
+      status = smprintf("%s %s | %s | %s | %s | %s | %s | %s",
+			conn, bw, cpu, mem, disk, temp, batt, tmloc);
       setstatus(status);
 	    
       counter = (counter + 1) % max_interval;
       if (counter % conn_interval == 0)  free(conn);
       if (counter % bw_interval == 0)    free(bw);
       if (counter % cpu_interval == 0)   free(cpu);
+      if (counter % mem_interval == 0)   free(mem);
       if (counter % disk_interval == 0)  free(disk);
       if (counter % temp_interval == 0)  free(temp);
       if (counter % batt_interval == 0)  free(batt);
