@@ -153,18 +153,15 @@ getvol(void)
 #define WIRELESS_FILE        "/proc/net/wireless"
 
 int
-parsenetdev(unsigned long long int *receivedabs, unsigned long long int *sentabs)
+parsenetdev(unsigned long long *receivedabs, unsigned long long *sentabs)
 {
-  char buf[255];
+  const int bufsize = 255;
+  char buf[bufsize];
   char *datastart;
-  static int bufsize;
-  int rval;
   FILE *fp = NULL;
-  unsigned long long int receivedacc, sentacc;
-
-  bufsize = 255;
-  rval = 1;
-
+  int rval = 1;
+  unsigned long long receivedacc, sentacc;
+  
   if ((fp = fopen(NETDEV_FILE, "r")))
     {
       // Ignore the first two lines of the file
@@ -184,67 +181,48 @@ parsenetdev(unsigned long long int *receivedabs, unsigned long long int *sentabs
 
 	      *receivedabs += receivedacc;
 	      *sentabs += sentacc;
-	      rval = 0;
 	    }
 	}
 
       fclose(fp);
+      rval = 0;
     }
   else
     {
-      warn("Error opening %s", NETDEV_FILE);
+      warn("Error opening "NETDEV_FILE);
     }
 
   return rval;
 }
 
-char *
-calculatespeed(unsigned long long int newval, unsigned long long int oldval)
+int
+getbandwidth(double *downbw, double *upbw)
 {
-  double speed;
-  speed = (newval - oldval) / 1024.0;
-  if (speed > 1024.0)
-    {
-      speed /= 1024.0;
-      return smprintf("%4.1f MiB/s", speed);
-    }
-  else
-    {
-      return smprintf("%4.0f KiB/s", speed);
-    }
-}
-
-char *
-getbandwidth(void)
-{
-  static unsigned long long int rec, sent;
-  unsigned long long int newrec, newsent;
+  static unsigned long long rec, sent;
+  unsigned long long newrec, newsent;
   newrec = newsent = 0;
-  char *downstr, *upstr;
-  char *bandwidth;
+  int rval = 1;
 
-  if (parsenetdev(&newrec, &newsent)) return smprintf("");
+  if (parsenetdev(&newrec, &newsent)) return rval;
 
-  downstr = calculatespeed(newrec, rec);
-  upstr = calculatespeed(newsent, sent);
+  *downbw = (newrec  - rec)  / 1024.0;
+  *upbw   = (newsent - sent) / 1024.0;
 
   rec = newrec;
   sent = newsent;
-  bandwidth = smprintf("▼ %s ▲ %s", downstr, upstr);
 
-  free(downstr);
-  free(upstr);
+  rval = 0;
   
-  return bandwidth;
+  return rval;
 }
 
-char *
-getwifistrength()
+int
+getwifistrength(int *strength)
 {
-  int strength;
   char buf[255];
   char *datastart;
   FILE *fp = NULL;
+  int rval = 1;
 
   if ((fp = fopen(WIRELESS_FILE, "r")))
     {
@@ -255,50 +233,62 @@ getwifistrength()
     }
   else
     {
-      warn("Error opening %s", WIRELESS_FILE);
-      return smprintf("");
+      warn("Error opening "WIRELESS_FILE);
+      return rval;
     }
 
   datastart = strstr(buf, WIFICARD":");
   if (datastart != NULL)
     {
       datastart = strstr(buf, ":");
-      sscanf(datastart + 1, " %*d   %d  %*d  %*d		  %*d	   %*d		%*d		 %*d	  %*d		 %*d", &strength);
+      sscanf(datastart + 1, " %*d   %d  %*d  %*d		  %*d	   %*d		%*d		 %*d	  %*d		 %*d", strength);
+
+      rval = 0;
     }
 
-  return smprintf("%d%%", strength);
+  return rval;
 }
 
-char *
-getwifiessid()
+int
+getwifiessid(char *id)
 {
-  char id[IW_ESSID_MAX_SIZE+1];
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   struct iwreq wreq;
-
+  int rval = 1;
+  
   memset(&wreq, 0, sizeof(struct iwreq));
   wreq.u.essid.length = IW_ESSID_MAX_SIZE+1;
   sprintf(wreq.ifr_name, WIFICARD);
   if (sockfd == -1)
     {
       warn("Cannot open socket for interface: %s", WIFICARD);
-      return smprintf("");
+      return rval;
     }
   wreq.u.essid.pointer = id;
   if (ioctl(sockfd,SIOCGIWESSID, &wreq) == -1)
     {
       warn("Get ESSID ioctl failed for interface %s", WIFICARD);
-      return smprintf("");
-    }
-  
-  close(sockfd);
-  if (strcmp((char *)wreq.u.essid.pointer, "") == 0)
-    {
-      return smprintf("");
     }
   else
     {
-      return smprintf("%s", (char *)wreq.u.essid.pointer);
+      rval = 0;
+    }
+  close(sockfd);
+
+  return rval;
+}
+
+char *
+bwstr(double bw)
+{
+  if (bw > 1024.0)
+    {
+      bw /= 1024.0;
+      return smprintf("%4.1f MiB/s", bw);
+    }
+  else
+    {
+      return smprintf("%4.0f KiB/s", bw);
     }
 }
 
@@ -306,29 +296,47 @@ char *
 getconnection(void)
 {
   char status[5];
-  char *strength;
-  char *essid;
+  char essid[IW_ESSID_MAX_SIZE+1];
+  char *conntype;
+  int strength;
+  double downbw, upbw;
+  char *downstr, *upstr;
   char *connection;
-
+  
   if (readvaluesfromfile(WIFI_OPERSTATE_FILE, "%s\n", status)) return smprintf("");
-  if(strcmp(status, "up") == 0)
+  if (strcmp(status, "up") == 0)
     {
-      strength = getwifistrength();
-      essid = getwifiessid();
-      connection = smprintf("%s %s", essid, strength);
-      free(strength);
-      free(essid);
-      return connection;
+      if (getwifiessid(essid))
+	{
+	  warn("Failed to obtain WiFi ESSID");
+	  sprintf(essid, "N/A");
+	}
+      if (getwifistrength(strength))
+	{
+	  warn("Failed to obtain WiFi strength");
+	}
     }
 
   if (readvaluesfromfile(WIRED_OPERSTATE_FILE, "%s\n", status)) return smprintf("");
   if (strcmp(status, "up") == 0)
     {
-      connection = smprintf("Wired");
-      return connection;
+      conntype = smprintf("Wired");
+    }
+  else
+    {
+      conntype = smprintf("%s %d%%", essid, strength);
     }
 
-  return smprintf("");
+  downstr = bwstr(downbw);
+  upstr   = bwstr(upbw);
+  
+  connection =  smprintf("%s ▼ %s ▲ %s", conntype, downstr, upstr);
+
+  free(upstr);
+  free(downstr);
+  free(conntype);
+  
+  return connection;
 }
 
 /* CPU info */
@@ -751,4 +759,3 @@ main(void)
 	
   return 0;
 }
-
