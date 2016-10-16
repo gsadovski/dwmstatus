@@ -336,7 +336,7 @@ getconnection(void)
     }
   else if (wifi)
     {
-      conntype = smprintf(" %s  %d%%");
+      conntype = smprintf(" %s  %d%%", essid, strength);
     }
   else
     {
@@ -513,7 +513,8 @@ getmeminfo(void)
     };
   const int mem_table_count = sizeof(mem_table)/sizeof(mem_table_struct);
   unsigned long kb_main_cached, kb_swap_used, kb_main_used;
-  float gb_main_used, gb_main_total, gb_swap_used, gb_swap_total;
+  float gb_main_used; /* , gb_main_total; */
+  float gb_swap_used; /* , gb_swap_total; */
 
   FILE_TO_BUF(MEMINFO_FILE,meminfo_fd);
 
@@ -547,13 +548,12 @@ getmeminfo(void)
   kb_main_used = kb_main_total - kb_main_free - kb_main_cached - kb_main_buffers;
 
   gb_main_used  = (float)kb_main_used  / 1024 / 1024;
-  gb_main_total = (float)kb_main_total / 1024 / 1024;
+  /* gb_main_total = (float)kb_main_total / 1024 / 1024; */
   gb_swap_used  = (float)kb_swap_used  / 1024 / 1024;
-  gb_swap_total = (float)kb_swap_total / 1024 / 1024;
+  /* gb_swap_total = (float)kb_swap_total / 1024 / 1024; */
   
-  return smprintf(" %4.1f/%4.1f GiB  %4.2f/%4.2f GiB",
-		  gb_main_used, gb_main_total,
-		  gb_swap_used, gb_swap_total);
+  return smprintf(" %4.1f GiB  %4.2f GiB",
+		  gb_main_used, gb_swap_used);
 }
 
 /* Disk info */
