@@ -296,6 +296,7 @@ char *
 getconnection(void)
 {
   char status[5];
+  int eth0, wifi;
   char essid[IW_ESSID_MAX_SIZE+1];
   char *conntype;
   int strength;
@@ -303,32 +304,56 @@ getconnection(void)
   char *downstr, *upstr;
   char *connection;
   
+  if (readvaluesfromfile(WIRED_OPERSTATE_FILE, "%s\n", status)) return smprintf("");
+  eth0 = !strcmp(status, "up");
+      
   if (readvaluesfromfile(WIFI_OPERSTATE_FILE, "%s\n", status)) return smprintf("");
-  if (strcmp(status, "up") == 0)
+  wifi = !strcmp(status, "up");
+
+  if (wifi)
     {
       if (getwifiessid(essid))
 	{
 	  warn("Failed to obtain WiFi ESSID");
 	  sprintf(essid, "N/A");
 	}
-      if (getwifistrength(strength))
+      if (getwifistrength(&strength))
 	{
 	  warn("Failed to obtain WiFi strength");
 	}
     }
 
-  if (readvaluesfromfile(WIRED_OPERSTATE_FILE, "%s\n", status)) return smprintf("");
-  if (strcmp(status, "up") == 0)
+  if (eth0)
     {
-      conntype = smprintf("Wired");
+      if (wifi)
+	{
+	  conntype = smprintf("  %s  %d%%");
+	}
+      else
+	{
+	  conntype = smprintf("");
+	}
+    }
+  else if (wifi)
+    {
+      conntype = smprintf(" %s  %d%%");
     }
   else
     {
-      conntype = smprintf("%s %d%%", essid, strength);
+      return smprintf("down");
     }
-
-  downstr = bwstr(downbw);
-  upstr   = bwstr(upbw);
+	  
+  if(getbandwidth(&downbw, &upbw))
+    {
+      warn("Failed to obtain bandwidth");
+      downstr = "---- KiB/s";
+      upstr   = "---- KiB/s";
+    }
+  else
+    {  
+      downstr = bwstr(downbw);
+      upstr   = bwstr(upbw);
+    }
   
   connection =  smprintf("%s ▼ %s ▲ %s", conntype, downstr, upstr);
 
@@ -699,7 +724,6 @@ main(void)
 {
   char *status;
   char *conn;
-  char *bw;
   char *cpu;
   char *mem;
   char *disk;
@@ -708,8 +732,7 @@ main(void)
   char *tmloc;
 
   int counter = 0;
-  int conn_interval  = 2;
-  int bw_interval    = 1;
+  int conn_interval  = 1;
   int cpu_interval   = 2;
   int mem_interval   = 2;
   int disk_interval  = 30;
@@ -730,7 +753,6 @@ main(void)
   for (;;sleep(1))
     {
       if (counter % conn_interval == 0)  conn = getconnection();
-      if (counter % bw_interval == 0)    bw   = getbandwidth();
       if (counter % cpu_interval == 0)   cpu  = getcpuload();
       if (counter % mem_interval == 0)   mem  = getmeminfo();
       if (counter % disk_interval == 0)  disk = getdiskusage();
@@ -738,13 +760,12 @@ main(void)
       if (counter % batt_interval == 0)  batt = getbattery();
       if (counter % tmloc_interval == 0) tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-      status = smprintf("%s %s | %s | %s | %s | %s | %s | %s",
-			conn, bw, cpu, mem, disk, temp, batt, tmloc);
+      status = smprintf("%s | %s | %s | %s | %s | %s | %s",
+			conn, cpu, mem, disk, temp, batt, tmloc);
       setstatus(status);
 	    
       counter = (counter + 1) % max_interval;
       if (counter % conn_interval == 0)  free(conn);
-      if (counter % bw_interval == 0)    free(bw);
       if (counter % cpu_interval == 0)   free(cpu);
       if (counter % mem_interval == 0)   free(mem);
       if (counter % disk_interval == 0)  free(disk);
