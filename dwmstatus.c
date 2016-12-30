@@ -55,7 +55,7 @@ smprintf(char *fmt, ...)
   va_start(fmtargs, fmt);
   vsnprintf(ret, len, fmt, fmtargs);
   va_end(fmtargs);
-	
+
   return ret;
 }
 
@@ -65,7 +65,7 @@ readvaluesfromfile(char *fn, char *fmt, ...)
   va_list fmtargs;
   FILE* fp = NULL;
   int rval = 1;
-  
+
   if ((fp = fopen(fn, "r")))
     {
       va_start(fmtargs, fmt);
@@ -89,9 +89,9 @@ readvaluesfromfile(char *fn, char *fmt, ...)
 #define GLYPH_VOL_LOW  ""
 #define GLYPH_VOL_HIGH ""
 
-char * 
+char *
 getvol(void)
-{ 
+{
   long int vol, max, min;
   int mute_state;
   int pct_vol;
@@ -99,7 +99,7 @@ getvol(void)
   snd_mixer_elem_t *elem;
   snd_mixer_selem_id_t *s_elem;
   char *s;
-    
+
   snd_mixer_open(&handle, 0);
   snd_mixer_attach(handle, "default");
   snd_mixer_selem_register(handle, NULL, NULL);
@@ -107,7 +107,7 @@ getvol(void)
   snd_mixer_selem_id_malloc(&s_elem);
   snd_mixer_selem_id_set_name(s_elem, "Master");
   elem = snd_mixer_find_selem(handle, s_elem);
-  
+
   if (elem == NULL)
     {
       snd_mixer_selem_id_free(s_elem);
@@ -115,12 +115,12 @@ getvol(void)
       warn("alsa error");
       return smprintf("");
     }
-  
+
   snd_mixer_handle_events(handle);
   snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
   snd_mixer_selem_get_playback_volume(elem, 0, &vol);
   snd_mixer_selem_get_playback_switch(elem, 0, &mute_state);
-  
+
   if(!mute_state)
     {
       return smprintf("%s MUTE", GLYPH_VOL_MUTE);
@@ -136,10 +136,10 @@ getvol(void)
     {
       s = GLYPH_VOL_HIGH;
     }
-  
+
   snd_mixer_selem_id_free(s_elem);
   snd_mixer_close(handle);
-  
+
   return smprintf("%s%3d%%", s, pct_vol);
 }
 
@@ -161,19 +161,19 @@ parsenetdev(unsigned long long *receivedabs, unsigned long long *sentabs)
   FILE *fp = NULL;
   int rval = 1;
   unsigned long long receivedacc, sentacc;
-  
+
   if ((fp = fopen(NETDEV_FILE, "r")))
     {
       // Ignore the first two lines of the file
       fgets(buf, bufsize, fp);
       fgets(buf, bufsize, fp);
-  
+
       while (fgets(buf, bufsize, fp))
 	{
 	  if ((datastart = strstr(buf, "lo:")) == NULL)
 	    {
 	      datastart = strstr(buf, ":");
-	  
+
 	      // With thanks to the conky project at http://conky.sourceforge.net/
 	      sscanf(datastart + 1,
 		     "%llu  %*d     %*d  %*d  %*d  %*d   %*d        %*d       %llu",
@@ -212,7 +212,7 @@ getbandwidth(double *downbw, double *upbw)
   sent = newsent;
 
   rval = 0;
-  
+
   return rval;
 }
 
@@ -255,7 +255,7 @@ getwifiessid(char *id)
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   struct iwreq wreq;
   int rval = 1;
-  
+
   memset(&wreq, 0, sizeof(struct iwreq));
   wreq.u.essid.length = IW_ESSID_MAX_SIZE+1;
   sprintf(wreq.ifr_name, WIFICARD);
@@ -303,10 +303,10 @@ getconnection(void)
   double downbw, upbw;
   char *downstr, *upstr;
   char *connection;
-  
+
   if (readvaluesfromfile(WIRED_OPERSTATE_FILE, "%s\n", status)) return smprintf("");
   eth0 = !strcmp(status, "up");
-      
+
   if (readvaluesfromfile(WIFI_OPERSTATE_FILE, "%s\n", status)) return smprintf("");
   wifi = !strcmp(status, "up");
 
@@ -342,7 +342,7 @@ getconnection(void)
     {
       return smprintf("down");
     }
-	  
+
   if(getbandwidth(&downbw, &upbw))
     {
       warn("Failed to obtain bandwidth");
@@ -350,17 +350,17 @@ getconnection(void)
       upstr   = "---- KiB/s";
     }
   else
-    {  
+    {
       downstr = bwstr(downbw);
       upstr   = bwstr(upbw);
     }
-  
+
   connection =  smprintf("%s ▼ %s ▲ %s", conntype, downstr, upstr);
 
   free(upstr);
   free(downstr);
   free(conntype);
-  
+
   return connection;
 }
 
@@ -408,7 +408,7 @@ getcpuload(void)
 			 &tics_cur.u, &tics_cur.n, &tics_cur.s, &tics_cur.i,
 			 &tics_cur.w, &tics_cur.x, &tics_cur.y, &tics_cur.z))
       return smprintf("");
-  
+
   tics_cur.tot = tics_cur.u + tics_cur.s + tics_cur.n + tics_cur.i +
       tics_cur.w + tics_cur.x + tics_cur.y + tics_cur.z;
   tics_cur.edge = ((tics_cur.tot - tics_prv.tot) / num_cpus) / (100 / TICS_EDGE);
@@ -551,7 +551,7 @@ getmeminfo(void)
   /* gb_main_total = (float)kb_main_total / 1024 / 1024; */
   gb_swap_used  = (float)kb_swap_used  / 1024 / 1024;
   /* gb_swap_total = (float)kb_swap_total / 1024 / 1024; */
-  
+
   return smprintf(" %4.1f GiB  %4.2f GiB",
 		  gb_main_used, gb_swap_used);
 }
@@ -563,7 +563,7 @@ diskfree(const char *mountpoint)
 {
   struct statvfs fs;
   float freespace;
-  
+
   if (statvfs(mountpoint, &fs) < 0)
     {
       warn("Could not get %s filesystem info", mountpoint);
@@ -634,13 +634,13 @@ getbattery()
   if (readvaluesfromfile(BATT_FULL, "%ld\n", &battfull)) return smprintf("");
   if (readvaluesfromfile(BATT_STATUS, "%s\n", status)) return smprintf("");
   if (readvaluesfromfile(POW_NOW, "%ld\n", &pow)) return smprintf("");
-  
+
   pct = 100*battnow/battfull;
 
   if (strcmp(status,"Charging") == 0)
     {
       s = GLYPH_CHRG;
-      
+
       energy = battfull - battnow;
     }
   else if (strcmp(status,"Discharging") == 0)
@@ -655,7 +655,7 @@ getbattery()
 	s = GLYPH_DCHRG_3;
       else
 	s = GLYPH_DCHRG_4;
-      
+
       energy = battnow;
     }
   else if (strcmp(status,"Full") == 0)
@@ -760,10 +760,10 @@ main(void)
       if (counter % batt_interval == 0)  batt = getbattery();
       if (counter % tmloc_interval == 0) tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
 
-      status = smprintf("%s | %s | %s | %s | %s | %s | %s",
+      status = smprintf(" %s | %s | %s | %s | %s | %s | %s",
 			conn, cpu, mem, disk, temp, batt, tmloc);
       setstatus(status);
-	    
+
       counter = (counter + 1) % max_interval;
       if (counter % conn_interval == 0)  free(conn);
       if (counter % cpu_interval == 0)   free(cpu);
@@ -772,11 +772,11 @@ main(void)
       if (counter % temp_interval == 0)  free(temp);
       if (counter % batt_interval == 0)  free(batt);
       if (counter % tmloc_interval == 0) free(tmloc);
-	    
+
       free(status);
     }
-	
+
   XCloseDisplay(dpy);
-	
+
   return 0;
 }
