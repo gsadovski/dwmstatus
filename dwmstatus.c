@@ -19,13 +19,12 @@
 #include <errno.h>
 #include <time.h>
 #include <ifaddrs.h>
+#include <fcntl.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <sys/statvfs.h>
-#include <alsa/asoundlib.h>
-#include <alsa/control.h>
 #include <linux/wireless.h>
 
 #include <X11/Xlib.h>
@@ -80,67 +79,6 @@ readvaluesfromfile(char *fn, char *fmt, ...)
     }
 
   return rval;
-}
-
-/* Volume info */
-/* Inexplicably much heavier on resources than the other functions */
-
-#define GLYPH_VOL_MUTE ""
-#define GLYPH_VOL_LOW  ""
-#define GLYPH_VOL_HIGH ""
-
-char *
-getvol(void)
-{
-  long int vol, max, min;
-  int mute_state;
-  int pct_vol;
-  snd_mixer_t *handle;
-  snd_mixer_elem_t *elem;
-  snd_mixer_selem_id_t *s_elem;
-  char *s;
-
-  snd_mixer_open(&handle, 0);
-  snd_mixer_attach(handle, "default");
-  snd_mixer_selem_register(handle, NULL, NULL);
-  snd_mixer_load(handle);
-  snd_mixer_selem_id_malloc(&s_elem);
-  snd_mixer_selem_id_set_name(s_elem, "Master");
-  elem = snd_mixer_find_selem(handle, s_elem);
-
-  if (elem == NULL)
-    {
-      snd_mixer_selem_id_free(s_elem);
-      snd_mixer_close(handle);
-      warn("alsa error");
-      return smprintf("");
-    }
-
-  snd_mixer_handle_events(handle);
-  snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
-  snd_mixer_selem_get_playback_volume(elem, 0, &vol);
-  snd_mixer_selem_get_playback_switch(elem, 0, &mute_state);
-
-  if(!mute_state)
-    {
-      return smprintf("%s MUTE", GLYPH_VOL_MUTE);
-    }
-
-  pct_vol = (int)((float)(vol * 100) / max + 0.5);
-
-  if (pct_vol < 50)
-    {
-      s = GLYPH_VOL_LOW;
-    }
-  else
-    {
-      s = GLYPH_VOL_HIGH;
-    }
-
-  snd_mixer_selem_id_free(s_elem);
-  snd_mixer_close(handle);
-
-  return smprintf("%s%3d%%", s, pct_vol);
 }
 
 /* Network info */
