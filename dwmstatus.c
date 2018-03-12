@@ -83,8 +83,8 @@ readvaluesfromfile(char *fn, char *fmt, ...)
 
 /* Network info */
 
-#define WIFICARD             "wlp3s0"
-#define WIREDCARD            "eth0"
+#define WIFICARD             "wlp7s0"
+#define WIREDCARD            "enp9s0"
 #define NETDEV_FILE          "/proc/net/dev"
 #define WIFI_OPERSTATE_FILE  "/sys/class/net/"WIFICARD"/operstate"
 #define WIRED_OPERSTATE_FILE "/sys/class/net/"WIREDCARD"/operstate"
@@ -222,11 +222,11 @@ bwstr(double bw)
   if (bw > 1024.0)
     {
       bw /= 1024.0;
-      return smprintf("%4.1f MiB/s", bw);
+      return smprintf("%.1fmbps", bw);
     }
   else
     {
-      return smprintf("%4.0f KiB/s", bw);
+      return smprintf("%.0fkbps", bw);
     }
 }
 
@@ -265,20 +265,22 @@ getconnection(void)
     {
       if (wifi)
 	{
-	  conntype = smprintf("  %s  %d%%");
+// 	    conntype = smprintf("  %s  %d%%");
+	  conntype = smprintf("⚼");
 	}
       else
 	{
-	  conntype = smprintf("");
+	  conntype = smprintf("⚼");
 	}
     }
   else if (wifi)
     {
-      conntype = smprintf(" %s  %d%%", essid, strength);
+//      conntype = smprintf(" %s  %d%%", essid, strength);
+      conntype = smprintf("📶%d%%", strength);
     }
   else
     {
-      return smprintf("down");
+      return smprintf("offline");
     }
 
   if(getbandwidth(&downbw, &upbw))
@@ -293,7 +295,7 @@ getconnection(void)
       upstr   = bwstr(upbw);
     }
 
-  connection =  smprintf("%s ▼ %s ▲ %s", conntype, downstr, upstr);
+  connection =  smprintf("%s ▼%s ▲%s", conntype, downstr, upstr);
 
   free(upstr);
   free(downstr);
@@ -376,8 +378,8 @@ getcpuload(void)
 
   pct_tot = (float)(tics_frme.u + tics_frme.n + tics_frme.s) * scale;
 
-  return smprintf(" %.2f %.2f %.2f %6.2f%%",
-		  avgs[0], avgs[1], avgs[2], pct_tot);
+  return smprintf("🏽%.0f%%(%.2f|%.2f|%.2f)",
+		  pct_tot,avgs[0], avgs[1], avgs[2]);
 }
 
 /* Memory info */
@@ -490,12 +492,13 @@ getmeminfo(void)
   gb_swap_used  = (float)kb_swap_used  / 1024 / 1024;
   /* gb_swap_total = (float)kb_swap_total / 1024 / 1024; */
 
-  return smprintf(" %4.1f GiB  %4.2f GiB",
+  return smprintf("🧠%1.1f/%1.1fGb",
 		  gb_main_used, gb_swap_used);
 }
 
 /* Disk info */
 
+/*
 char *
 diskfree(const char *mountpoint)
 {
@@ -526,6 +529,7 @@ getdiskusage(void)
   free(home);
   return s;
 }
+*/
 
 /*  Temperature info*/
 
@@ -540,24 +544,24 @@ gettemperature(void)
   if (readvaluesfromfile(TEMP_INPUT, "%ld\n", &temp)) return smprintf("");
   if (readvaluesfromfile(TEMP_CRIT, "%ld\n", &tempc)) return smprintf("");
 
-  return smprintf(" %3ld°C", temp / 1000);
+  return smprintf("🌡%ld°C", temp / 1000);
 }
 
 /* Battery info */
 
-#define BATT_NOW        "/sys/class/power_supply/BAT0/energy_now"
-#define BATT_FULL       "/sys/class/power_supply/BAT0/energy_full"
+#define BATT_NOW        "/sys/class/power_supply/BAT0/charge_now"
+#define BATT_FULL       "/sys/class/power_supply/BAT0/charge_full"
 #define BATT_STATUS     "/sys/class/power_supply/BAT0/status"
-#define POW_NOW         "/sys/class/power_supply/BAT0/power_now"
+#define POW_NOW         "/sys/class/power_supply/BAT0/current_now"
 
-#define GLYPH_UNKWN   "? "
-#define GLYPH_FULL    " "
-#define GLYPH_CHRG    " "
-#define GLYPH_DCHRG_0 " "
-#define GLYPH_DCHRG_1 " "
-#define GLYPH_DCHRG_2 " "
-#define GLYPH_DCHRG_3 " "
-#define GLYPH_DCHRG_4 " "
+#define GLYPH_UNKWN   "?"
+#define GLYPH_FULL    "🔌"
+#define GLYPH_CHRG    "🗲"  
+#define GLYPH_DCHRG_0 "🔋" 
+#define GLYPH_DCHRG_1 "🔋"
+#define GLYPH_DCHRG_2 "🔋"
+#define GLYPH_DCHRG_3 "🔋"
+#define GLYPH_DCHRG_4 "🔋"
 
 char *
 getbattery()
@@ -607,7 +611,7 @@ getbattery()
     {
       hh = energy / pow;
       mm = (energy % pow) * 60 / pow;
-      return smprintf("%s%3ld%% %2ld:%02ld", s,pct,hh,mm);
+      return smprintf("%s%ld%%(%ld:%ld)", s,pct,hh,mm);
     }
 }
 
@@ -632,12 +636,13 @@ mktimes(char *fmt)
   if (!strftime(buf, sizeof(buf)-1, fmt, timtm))
     {
       warn("strftime == 0");
-      return smprintf("");
+      return smprintf(""); 
     }
 
   return smprintf("%s", buf);
 }
 
+/*
 char *
 mktimestz(char *fmt, char *tzname)
 {
@@ -647,6 +652,7 @@ mktimestz(char *fmt, char *tzname)
 
   return buf;
 }
+*/
 
 /* Main function */
 
@@ -664,7 +670,7 @@ main(void)
   char *conn;
   char *cpu;
   char *mem;
-  char *disk;
+//  char *disk;
   char *temp;
   char *batt;
   char *tmloc;
@@ -673,7 +679,7 @@ main(void)
   int conn_interval  = 1;
   int cpu_interval   = 2;
   int mem_interval   = 2;
-  int disk_interval  = 30;
+//  int disk_interval  = 30;
   int temp_interval  = 30;
   int batt_interval  = 30;
   int tmloc_interval = 1;
@@ -693,20 +699,25 @@ main(void)
       if (counter % conn_interval == 0)  conn = getconnection();
       if (counter % cpu_interval == 0)   cpu  = getcpuload();
       if (counter % mem_interval == 0)   mem  = getmeminfo();
-      if (counter % disk_interval == 0)  disk = getdiskusage();
+//      if (counter % disk_interval == 0)  disk = getdiskusage();
       if (counter % temp_interval == 0)  temp = gettemperature();
       if (counter % batt_interval == 0)  batt = getbattery();
-      if (counter % tmloc_interval == 0) tmloc = mktimes("%Y-%m-%d %H:%M:%S %Z");
+      if (counter % tmloc_interval == 0) tmloc = mktimes("📆 %a,%d/%m/%Y  ⌛ %H:%M");
+//      if (counter % tmloc_interval == 0) tmloc = mktimes("%Y-%m-%D %H:%M:%S %Z");
 
-      status = smprintf(" %s | %s | %s | %s | %s | %s | %s",
+/*    status = smprintf(" %s | %s | %s | %s | %s | %s | %s",
 			conn, cpu, mem, disk, temp, batt, tmloc);
+      setstatus(status);
+*/
+      status = smprintf("%s %s %s %s %s  %s ",
+			conn, cpu, mem, temp, batt, tmloc);
       setstatus(status);
 
       counter = (counter + 1) % max_interval;
       if (counter % conn_interval == 0)  free(conn);
       if (counter % cpu_interval == 0)   free(cpu);
       if (counter % mem_interval == 0)   free(mem);
-      if (counter % disk_interval == 0)  free(disk);
+//      if (counter % disk_interval == 0)  free(disk);
       if (counter % temp_interval == 0)  free(temp);
       if (counter % batt_interval == 0)  free(batt);
       if (counter % tmloc_interval == 0) free(tmloc);
