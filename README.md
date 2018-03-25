@@ -9,9 +9,11 @@ It is necessary to alter some configs within dwmstatus.c so it will correctly pi
 INSTALL
 -------
 Git clone this repository. `$cd` into it. run the following commands  
-    $make  
-    $sudo make install  
-You should have now a working bin bash.  
+```
+$make  
+$sudo make install
+```  
+Now, you should have a working bin.
 
 SCREENSHOTS
 -----------
