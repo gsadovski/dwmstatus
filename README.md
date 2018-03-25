@@ -1,24 +1,25 @@
+DESCRIPTION
+-----------
 This is a fork of suckless dwmstatus based on another fork by Wojtek242. It can display wifi info such as SSID, signal strengh, upload and download speed, cpu, ram, swap, temperature, battery, disk usage, date and time. Optionally, I use unicode (UTF-8) characters as symbols for displaying these infos. Screenshots below.
 
 CONFIG
-______
-
-It is necessary to alter some configs within dwmstatus.c so it will correctly pick your hardware's info. Check all #define variable, specially WIFICARD, WIREDCARD, BATT-NOW, BATT-FULL, etc... and make the necessary modification for it to get it right.
+------
+It is necessary to alter some configs within dwmstatus.c so it will correctly pick your hardware's info. Check all #define variable. Specially wificard, wiredcard, batt-now, batt-full, etc.
 
 INSTALL
-______
-
-Git clone this repo. cd into it. run
-$make
-$sudo make install
-You should have now a working bin bash.
+-------
+Git clone this repository. `$cd` into it. run the following commands  
+    $make  
+    $sudo make install  
+You should have now a working bin bash.  
 
 SCREENSHOTS
 -----------
-Connected via wifi
+Connected via wifi  
 ![Screenshot](screenshots/ss_dwmstatus_wifi.png)
-Connected via ethernet
-![Screenshot](screenshots/ss_dwmstatus_ethernet.png)
-Offline
-![Screenshot](screenshots/ss_dwmstatus_offline.png)
 
+Connected via ethernet  
+![Screenshot](screenshots/ss_dwmstatus_ethernet.png)
+
+Offline  
+![Screenshot](screenshots/ss_dwmstatus_offline.png)
