@@ -12,13 +12,3 @@ Git clone this repo. cd into it. run
 $make
 $sudo make install
 You should have now a working bin bash.
-
-SCREENSHOTS
------------
-Connected via wifi
-![Screenshot](screenshots/ss_dwmstatus_wifi.png)
-Connected via ethernet
-![Screenshot](screenshots/ss_dwmstatus_ethernet.png)
-Offline
-![Screenshot](screenshots/ss_dwmstatus_offline.png)
-
