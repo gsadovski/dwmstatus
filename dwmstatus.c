@@ -83,11 +83,11 @@ readvaluesfromfile(char *fn, char *fmt, ...)
 
 /* Network info */
 
-#define WIFICARD             "wlp7s0"
-#define WIREDCARD            "enp9s0"
+#define WIFICARD             "wlp1s0"
+//#define WIREDCARD            ""
 #define NETDEV_FILE          "/proc/net/dev"
 #define WIFI_OPERSTATE_FILE  "/sys/class/net/"WIFICARD"/operstate"
-#define WIRED_OPERSTATE_FILE "/sys/class/net/"WIREDCARD"/operstate"
+#define WIRED_OPERSTATE_FILE "/sys/class/net/"WIFICARD"/operstate"
 #define WIRELESS_FILE        "/proc/net/wireless"
 
 int
@@ -266,17 +266,19 @@ getconnection(void)
       if (wifi)
 	{
 // 	    conntype = smprintf("  %s  %d%%");
-	  conntype = smprintf("⚼");
+//	  conntype = smprintf("⚼");
+	conntype = smprintf("📶 %d%%", strength);
 	}
       else
 	{
-	  conntype = smprintf("⚼");
+//	  conntype = smprintf("⚼");
+	conntype = smprintf("📶 %d%%", strength);
 	}
     }
   else if (wifi)
     {
 //      conntype = smprintf(" %s  %d%%", essid, strength);
-      conntype = smprintf("📶%d%%", strength);
+      conntype = smprintf("📶 %d%%", strength);
     }
   else
     {
@@ -378,7 +380,7 @@ getcpuload(void)
 
   pct_tot = (float)(tics_frme.u + tics_frme.n + tics_frme.s) * scale;
 
-  return smprintf("🏽%.0f%%(%.2f|%.2f|%.2f)",
+  return smprintf("🏽 %.0f%%(%.2f|%.2f|%.2f)",
 		  pct_tot,avgs[0], avgs[1], avgs[2]);
 }
 
@@ -492,7 +494,7 @@ getmeminfo(void)
   gb_swap_used  = (float)kb_swap_used  / 1024 / 1024;
   /* gb_swap_total = (float)kb_swap_total / 1024 / 1024; */
 
-  return smprintf("🧠%1.1f/%1.1fGb",
+  return smprintf("🧠 %1.1f/%1.1fGb",
 		  gb_main_used, gb_swap_used);
 }
 
@@ -544,24 +546,24 @@ gettemperature(void)
   if (readvaluesfromfile(TEMP_INPUT, "%ld\n", &temp)) return smprintf("");
   if (readvaluesfromfile(TEMP_CRIT, "%ld\n", &tempc)) return smprintf("");
 
-  return smprintf("🌡%ld°C", temp / 1000);
+  return smprintf("🌡 %ld°C", temp / 1000);
 }
 
 /* Battery info */
 
-#define BATT_NOW        "/sys/class/power_supply/BAT0/charge_now"
-#define BATT_FULL       "/sys/class/power_supply/BAT0/charge_full"
+#define BATT_NOW        "/sys/class/power_supply/BAT0/energy_now"
+#define BATT_FULL       "/sys/class/power_supply/BAT0/energy_full"
 #define BATT_STATUS     "/sys/class/power_supply/BAT0/status"
-#define POW_NOW         "/sys/class/power_supply/BAT0/current_now"
+#define POW_NOW         "/sys/class/power_supply/BAT0/power_now"
 
 #define GLYPH_UNKWN   "?"
-#define GLYPH_FULL    "🔌"
-#define GLYPH_CHRG    "🗲"  
-#define GLYPH_DCHRG_0 "🔋" 
-#define GLYPH_DCHRG_1 "🔋"
-#define GLYPH_DCHRG_2 "🔋"
-#define GLYPH_DCHRG_3 "🔋"
-#define GLYPH_DCHRG_4 "🔋"
+#define GLYPH_FULL    "🔌 "
+#define GLYPH_CHRG    "🗲 "  
+#define GLYPH_DCHRG_0 "🔋 " 
+#define GLYPH_DCHRG_1 "🔋 "
+#define GLYPH_DCHRG_2 "🔋 "
+#define GLYPH_DCHRG_3 "🔋 "
+#define GLYPH_DCHRG_4 "🔋 "
 
 char *
 getbattery()
@@ -709,7 +711,7 @@ main(void)
 			conn, cpu, mem, disk, temp, batt, tmloc);
       setstatus(status);
 */
-      status = smprintf("%s %s %s %s %s  %s ",
+      status = smprintf("%s  %s  %s  %s  %s  %s ",
 			conn, cpu, mem, temp, batt, tmloc);
       setstatus(status);
 
